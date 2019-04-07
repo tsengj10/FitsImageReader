@@ -34,7 +34,7 @@ public class Main {
         System.out.println("I got an image!" + image2);
         //ImageIO.write(image, "TIFF", new File("/home/tonyj/Data/mega.tiff"));
         JPanel content = new JPanel(new BorderLayout());
-        ImageComponent ic = new ImageComponent(image1);
+        ImageComponent ic = new ImageComponent(image2);
         content.add(ic, BorderLayout.CENTER);
         JFrame frame = new JFrame();
         frame.setContentPane(content);

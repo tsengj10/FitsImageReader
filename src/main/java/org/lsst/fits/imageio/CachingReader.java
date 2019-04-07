@@ -19,14 +19,13 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.channels.FileChannel;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import javax.imageio.ImageReadParam;
+import java.util.concurrent.TimeUnit;
 import javax.imageio.stream.ImageInputStream;
 import nom.tam.fits.FitsUtil;
 import nom.tam.fits.Header;
@@ -46,7 +45,7 @@ public class CachingReader {
 
     CachingReader() {
         openFileCache = Caffeine.newBuilder()
-                .expireAfterAccess(Duration.ofMinutes(1))
+                .expireAfterAccess(1,TimeUnit.MINUTES)
                 .removalListener((File file, BufferedFile bf, RemovalCause rc) -> {
                     try {
                         bf.close();
@@ -71,7 +70,7 @@ public class CachingReader {
                 });
     }
 
-    void readImage(ImageInputStream fileInput, ImageReadParam param, Graphics2D g) throws IOException {
+    void readImage(ImageInputStream fileInput, Rectangle sourceRegion, Graphics2D g) throws IOException {
 
         try {
             Queue<CompletableFuture> l1 = new ConcurrentLinkedQueue<>();
@@ -83,7 +82,7 @@ public class CachingReader {
                 }
                 CompletableFuture<List<Segment>> futureSegments = segmentCache.get(new File(line));
                 l1.add(futureSegments.thenAccept((List<Segment> segments) -> {
-                    List<Segment> segmentsToRead = computeSegmentsToRead(segments, param);
+                    List<Segment> segmentsToRead = computeSegmentsToRead(segments, sourceRegion);
                     for (Segment segment : segmentsToRead) {
                         CompletableFuture<BufferedImage> fbi = bufferedImageCache.get(segment);
                         l2.add(fbi.thenAccept((BufferedImage bi) -> {
@@ -108,14 +107,13 @@ public class CachingReader {
         }
     }
 
-    private List<Segment> computeSegmentsToRead(List<Segment> segments, ImageReadParam param) {
-        if (param == null || param.getSourceRegion() == null) {
+    private List<Segment> computeSegmentsToRead(List<Segment> segments, Rectangle sourceRegion) {
+        if (sourceRegion == null) {
             return segments;
         } else {
             List<Segment> segmentsToRead = new ArrayList<>();
-            Rectangle r = param.getSourceRegion();
             for (Segment segment : segments) {
-                if (segment.getWCS().intersects(r)) {
+                if (segment.getWCS().intersects(sourceRegion)) {
                     segmentsToRead.add(segment);
                 }
             }

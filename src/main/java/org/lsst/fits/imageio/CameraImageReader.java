@@ -1,6 +1,7 @@
 package org.lsst.fits.imageio;
 
 import java.awt.Graphics2D;
+import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBuffer;
 import java.io.IOException;
@@ -94,20 +95,24 @@ public class CameraImageReader extends ImageReader {
         }
         BufferedImage result;
         Graphics2D g;
-        if (param == null || param.getSourceRegion() == null) {
+        Rectangle sourceRegion = param == null ? null : param.getSourceRegion();
+
+        // Note, graphics and source region being flipped in Y to comply with Camera visualization standards
+        if (sourceRegion == null) {
             result = GRAYSCALE.createBufferedImage(getWidth(0), getHeight(0));
             g = result.createGraphics();
             g.translate(0,getHeight(0));
             g.scale(1,-1);
         } else {
-            result = GRAYSCALE.createBufferedImage((int) param.getSourceRegion().getWidth(), (int) param.getSourceRegion().getHeight()); 
+            sourceRegion = new Rectangle(sourceRegion.x, getHeight(0)-sourceRegion.y-sourceRegion.height, sourceRegion.width, sourceRegion.height);
+            result = GRAYSCALE.createBufferedImage((int) sourceRegion.getWidth(), (int) sourceRegion.getHeight());
             g = result.createGraphics();
-            g.translate(0,param.getSourceRegion().getHeight());
+            g.translate(0,sourceRegion.getHeight());
             g.scale(1,-1);
-            g.translate(-param.getSourceRegion().getX(), -param.getSourceRegion().getY());
+            g.translate(-sourceRegion.getX(), -sourceRegion.getY());
         }
         try {
-            reader.readImage((ImageInputStream) getInput(), param, g);
+            reader.readImage((ImageInputStream) getInput(), sourceRegion, g);
             return result;
         } finally {
             g.dispose();
