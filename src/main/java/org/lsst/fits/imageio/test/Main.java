@@ -1,4 +1,4 @@
-package org.lsst.fits.imageio;
+package org.lsst.fits.imageio.test;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
@@ -12,8 +12,7 @@ import javax.imageio.ImageReadParam;
 import javax.imageio.ImageReader;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
-import org.lsst.fits.test.ImageComponent;
-import org.lsst.fits.test.Timed;
+import org.lsst.fits.imageio.Timed;
 
 /**
  *

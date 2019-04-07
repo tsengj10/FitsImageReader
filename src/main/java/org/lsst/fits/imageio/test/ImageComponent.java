@@ -1,9 +1,10 @@
-package org.lsst.fits.test;
+package org.lsst.fits.imageio.test;
 
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import javax.swing.JComponent;
+import org.lsst.fits.imageio.Timed;
 
 /**
  * Simple component for displaying a buffered image

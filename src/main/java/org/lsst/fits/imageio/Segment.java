@@ -93,4 +93,9 @@ class Segment {
     public Rectangle.Double getWCS() {
         return wcs;
     }
+
+    @Override
+    public String toString() {
+        return "Segment{" + "file=" + file + ", seekPosition=" + seekPosition + '}';
+    }
 }

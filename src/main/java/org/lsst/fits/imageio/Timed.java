@@ -1,4 +1,4 @@
-package org.lsst.fits.test;
+package org.lsst.fits.imageio;
 
 import java.util.concurrent.Callable;
 import java.util.logging.Level;

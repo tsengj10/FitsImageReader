@@ -26,12 +26,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.imageio.stream.ImageInputStream;
 import nom.tam.fits.FitsUtil;
 import nom.tam.fits.Header;
 import nom.tam.fits.TruncatedFileException;
 import nom.tam.util.BufferedFile;
-import org.lsst.fits.test.ScalingUtils;
 
 /**
  *
@@ -42,15 +43,16 @@ public class CachingReader {
     private final AsyncLoadingCache<File, List<Segment>> segmentCache;
     private final LoadingCache<File, BufferedFile> openFileCache;
     private final AsyncLoadingCache<Segment, BufferedImage> bufferedImageCache;
+    private static final Logger LOG = Logger.getLogger(CachingReader.class.getName());
 
     CachingReader() {
         openFileCache = Caffeine.newBuilder()
-                .expireAfterAccess(1,TimeUnit.MINUTES)
+                .expireAfterAccess(1, TimeUnit.MINUTES)
                 .removalListener((File file, BufferedFile bf, RemovalCause rc) -> {
                     try {
                         bf.close();
                     } catch (IOException ex) {
-                        // Silently ignore for now.
+                        LOG.log(Level.WARNING, "Error closing file", ex);
                     }
                 })
                 .build((File file) -> new BufferedFile(file, "r"));
@@ -58,15 +60,19 @@ public class CachingReader {
         segmentCache = Caffeine.newBuilder()
                 .maximumSize(10_000)
                 .buildAsync((File file) -> {
-                    BufferedFile bf = openFileCache.get(file);
-                    return readSegments(file, bf);
+                    return Timed.execute(() -> {
+                        BufferedFile bf = openFileCache.get(file);
+                        return readSegments(file, bf);
+                    }, "Loading %s took %dms", file);
                 });
 
         bufferedImageCache = Caffeine.newBuilder()
                 .maximumSize(10_000)
                 .buildAsync((Segment segment) -> {
-                    BufferedFile bf = openFileCache.get(segment.getFile());
-                    return readBufferedImage(segment, bf);
+                    return Timed.execute(() -> {
+                        BufferedFile bf = openFileCache.get(segment.getFile());
+                        return readBufferedImage(segment, bf);
+                    }, "Loading buffered image for segment %s took %dms", segment);
                 });
     }
 
@@ -95,7 +101,9 @@ public class CachingReader {
                     }
                 }));
             }
+            LOG.log(Level.INFO, "Waiting for {0} segments",l1.size());
             CompletableFuture.allOf(l1.toArray(new CompletableFuture[l1.size()])).join();
+            LOG.log(Level.INFO, "Waiting for {0} buffered images",l2.size());
             CompletableFuture.allOf(l2.toArray(new CompletableFuture[l2.size()])).join();
         } catch (CompletionException x) {
             Throwable cause = x.getCause();
