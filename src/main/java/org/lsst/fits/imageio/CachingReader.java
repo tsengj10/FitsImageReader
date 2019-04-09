@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 import javax.imageio.stream.ImageInputStream;
 import nom.tam.fits.FitsUtil;
 import nom.tam.fits.Header;
@@ -43,6 +44,8 @@ public class CachingReader {
     private final AsyncLoadingCache<File, List<Segment>> segmentCache;
     private final LoadingCache<File, BufferedFile> openFileCache;
     private final AsyncLoadingCache<Segment, BufferedImage> bufferedImageCache;
+    private final LoadingCache<ImageInputStream, List<String>> linesCache;
+
     private static final Logger LOG = Logger.getLogger(CachingReader.class.getName());
 
     CachingReader() {
@@ -74,22 +77,37 @@ public class CachingReader {
                         return readBufferedImage(segment, bf);
                     }, "Loading buffered image for segment %s took %dms", segment);
                 });
+
+        linesCache = Caffeine.newBuilder()
+                .maximumSize(10_000)
+                .build((ImageInputStream in) -> {
+                    return Timed.execute(() -> {
+                        List<String> lines = new ArrayList<>();
+                        in.seek(0);
+                        for (;;) {
+                            String line = in.readLine();
+                            if (line == null) {
+                                break;
+                            }
+                            lines.add(line);
+                        }
+                        return lines;
+                    }, "Read lines in %dms");
+                });
+
     }
 
+    @SuppressWarnings("null")
     void readImage(ImageInputStream fileInput, Rectangle sourceRegion, Graphics2D g) throws IOException {
 
         try {
             Queue<CompletableFuture> l1 = new ConcurrentLinkedQueue<>();
             Queue<CompletableFuture> l2 = new ConcurrentLinkedQueue<>();
-            for (;;) {
-                String line = fileInput.readLine();
-                if (line == null) {
-                    break;
-                }
-                CompletableFuture<List<Segment>> futureSegments = segmentCache.get(new File(line));
+            List<String> lines = linesCache.get(fileInput);
+            lines.stream().map((line) -> segmentCache.get(new File(line))).forEach((futureSegments) -> {
                 l1.add(futureSegments.thenAccept((List<Segment> segments) -> {
                     List<Segment> segmentsToRead = computeSegmentsToRead(segments, sourceRegion);
-                    for (Segment segment : segmentsToRead) {
+                    segmentsToRead.forEach((segment) -> {
                         CompletableFuture<BufferedImage> fbi = bufferedImageCache.get(segment);
                         l2.add(fbi.thenAccept((BufferedImage bi) -> {
                             Graphics2D g2 = (Graphics2D) g.create();
@@ -98,12 +116,12 @@ public class CachingReader {
                             g2.drawImage(bi.getSubimage(datasec.x, datasec.y, datasec.width, datasec.height), 0, 0, null);
                             g2.dispose();
                         }));
-                    }
+                    });
                 }));
-            }
-            LOG.log(Level.INFO, "Waiting for {0} segments",l1.size());
+            });
+            LOG.log(Level.INFO, "Waiting for {0} segments", l1.size());
             CompletableFuture.allOf(l1.toArray(new CompletableFuture[l1.size()])).join();
-            LOG.log(Level.INFO, "Waiting for {0} buffered images",l2.size());
+            LOG.log(Level.INFO, "Waiting for {0} buffered images", l2.size());
             CompletableFuture.allOf(l2.toArray(new CompletableFuture[l2.size()])).join();
         } catch (CompletionException x) {
             Throwable cause = x.getCause();
@@ -119,13 +137,9 @@ public class CachingReader {
         if (sourceRegion == null) {
             return segments;
         } else {
-            List<Segment> segmentsToRead = new ArrayList<>();
-            for (Segment segment : segments) {
-                if (segment.getWCS().intersects(sourceRegion)) {
-                    segmentsToRead.add(segment);
-                }
-            }
-            return segmentsToRead;
+            return segments.stream()
+                    .filter((segment) -> (segment.intersects(sourceRegion)))
+                    .collect(Collectors.toCollection(ArrayList::new));
         }
     }
 

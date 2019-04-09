@@ -74,26 +74,26 @@ class Segment {
         return seekPosition;
     }
 
-    public int getNAxis1() {
+    int getNAxis1() {
         return nAxis1;
     }
 
-    public int getNAxis2() {
+    int getNAxis2() {
         return nAxis2;
     }
 
-    public AffineTransform getWCSTranslation() {
+    AffineTransform getWCSTranslation() {
         return wcsTranslation;
     }
 
-    public Rectangle getDataSec() {
+    Rectangle getDataSec() {
         return datasec;
     }
 
-    public Rectangle.Double getWCS() {
-        return wcs;
+    boolean intersects(Rectangle sourceRegion) {
+        return wcs.intersects(sourceRegion);
     }
-
+    
     @Override
     public String toString() {
         return "Segment{" + "file=" + file + ", seekPosition=" + seekPosition + '}';
