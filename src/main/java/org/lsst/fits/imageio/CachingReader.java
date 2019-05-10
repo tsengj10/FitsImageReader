@@ -5,14 +5,9 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import java.awt.Graphics2D;
-import java.awt.Point;
 import java.awt.Rectangle;
-import java.awt.Transparency;
-import java.awt.color.ColorSpace;
 import java.awt.image.BufferedImage;
-import java.awt.image.ComponentColorModel;
 import java.awt.image.DataBuffer;
-import java.awt.image.Raster;
 import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
@@ -110,11 +105,11 @@ public class CachingReader {
                     segmentsToRead.forEach((segment) -> {
                         CompletableFuture<BufferedImage> fbi = bufferedImageCache.get(segment);
                         l2.add(fbi.thenAccept((BufferedImage bi) -> {
-                            Graphics2D g2 = (Graphics2D) g.create();
-                            g2.transform(segment.getWCSTranslation());
-                            Rectangle datasec = segment.getDataSec();
-                            g2.drawImage(bi.getSubimage(datasec.x, datasec.y, datasec.width, datasec.height), 0, 0, null);
-                            g2.dispose();
+                                Graphics2D g2 = (Graphics2D) g.create();
+                                g2.transform(segment.getWCSTranslation());
+                                Rectangle datasec = segment.getDataSec();
+                                g2.drawImage(bi.getSubimage(datasec.x, datasec.y, datasec.width, datasec.height), 0, 0, null);
+                                g2.dispose();
                         }));
                     });
                 }));
@@ -123,6 +118,7 @@ public class CachingReader {
             CompletableFuture.allOf(l1.toArray(new CompletableFuture[l1.size()])).join();
             LOG.log(Level.INFO, "Waiting for {0} buffered images", l2.size());
             CompletableFuture.allOf(l2.toArray(new CompletableFuture[l2.size()])).join();
+            LOG.log(Level.INFO, "Done waiting");
         } catch (CompletionException x) {
             Throwable cause = x.getCause();
             if (cause instanceof IOException) {
@@ -181,16 +177,16 @@ public class CachingReader {
         int range = cdf[max];
 
         // Scale data 
-        WritableRaster raster = Raster.createInterleavedRaster(DataBuffer.TYPE_USHORT, segment.getNAxis1(), segment.getNAxis2(), 1, new Point(0, 0));
+        BufferedImage image = CameraImageReader.IMAGE_TYPE.createBufferedImage(segment.getNAxis1(), segment.getNAxis2());
+        WritableRaster raster = image.getRaster();
         DataBuffer db = raster.getDataBuffer();
 
         intBuffer.rewind();
         for (int p = 0; p < intBuffer.capacity(); p++) {
-            db.setElem(p, 0xffff & (int) ((cdf[intBuffer.get(p)]) * 65536L / range));
+            // Assumes image type INT_RGB
+            int b = (cdf[intBuffer.get(p)] * 255 / range);
+            db.setElem(p, b | b<<8 | b<<16);
         }
-        ComponentColorModel cm = new ComponentColorModel(ColorSpace.getInstance(ColorSpace.CS_GRAY),
-                false, false, Transparency.OPAQUE,
-                raster.getTransferType());
-        return new BufferedImage(cm, raster, false, null);
+        return image;
     }
 }

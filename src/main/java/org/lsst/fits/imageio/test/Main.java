@@ -22,18 +22,19 @@ public class Main {
 
     public static void main(String[] args) throws IOException {
 
-        BufferedImage image1 = Timed.execute(()-> ImageIO.read(new File("/home/tonyj/Data/pretty/R22.raft")), "Reading took %dms");
+        BufferedImage image1 = Timed.execute(()-> ImageIO.read(new File(args[0])), "Reading took %dms");
         System.out.println("I got an image!" + image1);
         Iterator<ImageReader> imageReadersByFormatName = ImageIO.getImageReadersByMIMEType("image/raft");
         ImageReader reader = imageReadersByFormatName.next();
         ImageReadParam readParam = reader.getDefaultReadParam();
         readParam.setSourceRegion(new Rectangle(4000,4000,2000,2000));
-        reader.setInput(ImageIO.createImageInputStream(new File("/home/tonyj/Data/pretty/R22.raft")));
+        reader.setInput(ImageIO.createImageInputStream(new File(args[0])));
         BufferedImage image2 = reader.read(0, readParam);
         System.out.println("I got an image!" + image2);
+        //sun.java2d.loops.GraphicsPrimitiveMgr.main(new String[1]);
         //ImageIO.write(image, "TIFF", new File("/home/tonyj/Data/mega.tiff"));
         JPanel content = new JPanel(new BorderLayout());
-        ImageComponent ic = new ImageComponent(image2);
+        ImageComponent ic = new ImageComponent(image1);
         content.add(ic, BorderLayout.CENTER);
         JFrame frame = new JFrame();
         frame.setContentPane(content);

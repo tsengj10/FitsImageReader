@@ -3,7 +3,6 @@ package org.lsst.fits.imageio;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
-import java.awt.image.DataBuffer;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Iterator;
@@ -25,7 +24,7 @@ public class CameraImageReader extends ImageReader {
 
     private static final Logger LOG = Logger.getLogger(CameraImageReader.class.getName());
     private static final CachingReader reader = new CachingReader();
-    private static final ImageTypeSpecifier GRAYSCALE = ImageTypeSpecifier.createGrayscale(16, DataBuffer.TYPE_USHORT, false);
+    static final ImageTypeSpecifier IMAGE_TYPE = ImageTypeSpecifier.createFromBufferedImageType(BufferedImage.TYPE_INT_RGB);
 
     static {
         FitsFactory.setUseHierarch(true);
@@ -68,7 +67,7 @@ public class CameraImageReader extends ImageReader {
 
     @Override
     public Iterator<ImageTypeSpecifier> getImageTypes(int imageIndex) throws IOException {
-        return Collections.singleton(GRAYSCALE).iterator();
+        return Collections.singleton(IMAGE_TYPE).iterator();
     }
 
     @Override
@@ -99,13 +98,13 @@ public class CameraImageReader extends ImageReader {
 
         // Note, graphics and source region being flipped in Y to comply with Camera visualization standards
         if (sourceRegion == null) {
-            result = GRAYSCALE.createBufferedImage(getWidth(0), getHeight(0));
+            result = IMAGE_TYPE.createBufferedImage(getWidth(0), getHeight(0));
             g = result.createGraphics();
             g.translate(0,getHeight(0));
             g.scale(1,-1);
         } else {
             sourceRegion = new Rectangle(sourceRegion.x, getHeight(0)-sourceRegion.y-sourceRegion.height, sourceRegion.width, sourceRegion.height);
-            result = GRAYSCALE.createBufferedImage((int) sourceRegion.getWidth(), (int) sourceRegion.getHeight());
+            result = IMAGE_TYPE.createBufferedImage((int) sourceRegion.getWidth(), (int) sourceRegion.getHeight());
             g = result.createGraphics();
             g.translate(0,sourceRegion.getHeight());
             g.scale(1,-1);

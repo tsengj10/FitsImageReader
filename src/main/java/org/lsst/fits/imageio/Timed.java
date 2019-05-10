@@ -24,7 +24,7 @@ public class Timed {
             return Timed.sneakyThrow(x);
         } finally {
             long stop = System.currentTimeMillis();
-            LOG.log(Level.INFO, () -> message.get(stop - start));
+            LOG.log(Level.FINE, () -> message.get(stop - start));
         }
     }
 
