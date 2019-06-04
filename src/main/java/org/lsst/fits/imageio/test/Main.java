@@ -8,11 +8,12 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Iterator;
 import javax.imageio.ImageIO;
-import javax.imageio.ImageReadParam;
 import javax.imageio.ImageReader;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
+import org.lsst.fits.imageio.FITSImageReadParam;
 import org.lsst.fits.imageio.Timed;
+import org.lsst.fits.imageio.cmap.SAOColorMap;
 
 /**
  *
@@ -22,19 +23,20 @@ public class Main {
 
     public static void main(String[] args) throws IOException {
 
-        BufferedImage image1 = Timed.execute(()-> ImageIO.read(new File(args[0])), "Reading took %dms");
+        BufferedImage image1 = Timed.execute(()-> ImageIO.read(new File(args[0])), "Reading took %dms");  
         System.out.println("I got an image!" + image1);
         Iterator<ImageReader> imageReadersByFormatName = ImageIO.getImageReadersByMIMEType("image/raft");
         ImageReader reader = imageReadersByFormatName.next();
-        ImageReadParam readParam = reader.getDefaultReadParam();
+        FITSImageReadParam readParam = (FITSImageReadParam) reader.getDefaultReadParam();
         readParam.setSourceRegion(new Rectangle(4000,4000,2000,2000));
+        readParam.setColorMap(new SAOColorMap(256, "cubehelix00.sao"));
         reader.setInput(ImageIO.createImageInputStream(new File(args[0])));
         BufferedImage image2 = reader.read(0, readParam);
         System.out.println("I got an image!" + image2);
         //sun.java2d.loops.GraphicsPrimitiveMgr.main(new String[1]);
         //ImageIO.write(image, "TIFF", new File("/home/tonyj/Data/mega.tiff"));
         JPanel content = new JPanel(new BorderLayout());
-        ImageComponent ic = new ImageComponent(image1);
+        ImageComponent ic = new ImageComponent(image2);
         content.add(ic, BorderLayout.CENTER);
         JFrame frame = new JFrame();
         frame.setContentPane(content);

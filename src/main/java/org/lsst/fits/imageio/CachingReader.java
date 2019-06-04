@@ -8,6 +8,7 @@ import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBuffer;
+import java.awt.image.LookupOp;
 import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
@@ -29,6 +30,7 @@ import nom.tam.fits.FitsUtil;
 import nom.tam.fits.Header;
 import nom.tam.fits.TruncatedFileException;
 import nom.tam.util.BufferedFile;
+import org.lsst.fits.imageio.cmap.RGBColorMap;
 
 /**
  *
@@ -42,7 +44,7 @@ public class CachingReader {
     private final LoadingCache<ImageInputStream, List<String>> linesCache;
 
     private static final Logger LOG = Logger.getLogger(CachingReader.class.getName());
-
+    
     CachingReader() {
         openFileCache = Caffeine.newBuilder()
                 .expireAfterAccess(1, TimeUnit.MINUTES)
@@ -93,7 +95,7 @@ public class CachingReader {
     }
 
     @SuppressWarnings("null")
-    void readImage(ImageInputStream fileInput, Rectangle sourceRegion, Graphics2D g) throws IOException {
+    void readImage(ImageInputStream fileInput, Rectangle sourceRegion, Graphics2D g, RGBColorMap cmap) throws IOException {
 
         try {
             Queue<CompletableFuture> l1 = new ConcurrentLinkedQueue<>();
@@ -108,7 +110,12 @@ public class CachingReader {
                                 Graphics2D g2 = (Graphics2D) g.create();
                                 g2.transform(segment.getWCSTranslation());
                                 Rectangle datasec = segment.getDataSec();
-                                g2.drawImage(bi.getSubimage(datasec.x, datasec.y, datasec.width, datasec.height), 0, 0, null);
+                                BufferedImage subimage = bi.getSubimage(datasec.x, datasec.y, datasec.width, datasec.height);
+                                if (cmap != CameraImageReader.DEFAULT_COLOR_MAP) {
+                                   LookupOp op = cmap.getLookupOp(); 
+                                   subimage = op.filter(subimage, null);
+                                }
+                                g2.drawImage(subimage, 0, 0, null);
                                 g2.dispose();
                         }));
                     });
@@ -182,10 +189,11 @@ public class CachingReader {
         DataBuffer db = raster.getDataBuffer();
 
         intBuffer.rewind();
+
         for (int p = 0; p < intBuffer.capacity(); p++) {
             // Assumes image type INT_RGB
-            int b = (cdf[intBuffer.get(p)] * 255 / range);
-            db.setElem(p, b | b<<8 | b<<16);
+            int rgb = CameraImageReader.DEFAULT_COLOR_MAP.getRGB(cdf[intBuffer.get(p)] * 255 / range);
+            db.setElem(p, rgb);
         }
         return image;
     }

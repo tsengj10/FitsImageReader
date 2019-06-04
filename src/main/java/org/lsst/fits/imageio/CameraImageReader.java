@@ -15,6 +15,8 @@ import javax.imageio.metadata.IIOMetadata;
 import javax.imageio.spi.ImageReaderSpi;
 import javax.imageio.stream.ImageInputStream;
 import nom.tam.fits.FitsFactory;
+import org.lsst.fits.imageio.cmap.RGBColorMap;
+import org.lsst.fits.imageio.cmap.SAOColorMap;
 
 /**
  *
@@ -23,9 +25,10 @@ import nom.tam.fits.FitsFactory;
 public class CameraImageReader extends ImageReader {
 
     private static final Logger LOG = Logger.getLogger(CameraImageReader.class.getName());
-    private static final CachingReader reader = new CachingReader();
-    static final ImageTypeSpecifier IMAGE_TYPE = ImageTypeSpecifier.createFromBufferedImageType(BufferedImage.TYPE_INT_RGB);
-
+    private static final CachingReader READER = new CachingReader();
+    public static final ImageTypeSpecifier IMAGE_TYPE = ImageTypeSpecifier.createFromBufferedImageType(BufferedImage.TYPE_INT_RGB);
+    public static final RGBColorMap DEFAULT_COLOR_MAP = new SAOColorMap(256, "grey.sao");
+    
     static {
         FitsFactory.setUseHierarch(true);
     }
@@ -40,8 +43,8 @@ public class CameraImageReader extends ImageReader {
     }
 
     @Override
-    public ImageReadParam getDefaultReadParam() {
-        return super.getDefaultReadParam();
+    public FITSImageReadParam getDefaultReadParam() {
+        return new FITSImageReadParam();
     }
 
     @Override
@@ -95,6 +98,7 @@ public class CameraImageReader extends ImageReader {
         BufferedImage result;
         Graphics2D g;
         Rectangle sourceRegion = param == null ? null : param.getSourceRegion();
+        RGBColorMap cmap = param instanceof FITSImageReadParam ? ((FITSImageReadParam) param).getColorMap() : DEFAULT_COLOR_MAP;
 
         // Note, graphics and source region being flipped in Y to comply with Camera visualization standards
         if (sourceRegion == null) {
@@ -111,7 +115,7 @@ public class CameraImageReader extends ImageReader {
             g.translate(-sourceRegion.getX(), -sourceRegion.getY());
         }
         try {
-            reader.readImage((ImageInputStream) getInput(), sourceRegion, g);
+            READER.readImage((ImageInputStream) getInput(), sourceRegion, g, cmap);
             return result;
         } finally {
             g.dispose();
