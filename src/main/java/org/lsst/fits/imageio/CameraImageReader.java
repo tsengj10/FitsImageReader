@@ -15,6 +15,8 @@ import javax.imageio.metadata.IIOMetadata;
 import javax.imageio.spi.ImageReaderSpi;
 import javax.imageio.stream.ImageInputStream;
 import nom.tam.fits.FitsFactory;
+import org.lsst.fits.imageio.bias.BiasCorrection;
+import org.lsst.fits.imageio.bias.NullBiasCorrection;
 import org.lsst.fits.imageio.cmap.RGBColorMap;
 import org.lsst.fits.imageio.cmap.SAOColorMap;
 
@@ -28,6 +30,7 @@ public class CameraImageReader extends ImageReader {
     private static final CachingReader READER = new CachingReader();
     public static final ImageTypeSpecifier IMAGE_TYPE = ImageTypeSpecifier.createFromBufferedImageType(BufferedImage.TYPE_INT_RGB);
     public static final RGBColorMap DEFAULT_COLOR_MAP = new SAOColorMap(256, "grey.sao");
+    public static final BiasCorrection DEFAULT_BIAS_CORRECTION = new NullBiasCorrection();
     
     static {
         FitsFactory.setUseHierarch(true);
@@ -99,6 +102,7 @@ public class CameraImageReader extends ImageReader {
         Graphics2D g;
         Rectangle sourceRegion = param == null ? null : param.getSourceRegion();
         RGBColorMap cmap = param instanceof FITSImageReadParam ? ((FITSImageReadParam) param).getColorMap() : DEFAULT_COLOR_MAP;
+        BiasCorrection bc = param instanceof FITSImageReadParam ? ((FITSImageReadParam) param).getBiasCorrection(): DEFAULT_BIAS_CORRECTION;
 
         // Note, graphics and source region being flipped in Y to comply with Camera visualization standards
         if (sourceRegion == null) {
@@ -115,7 +119,7 @@ public class CameraImageReader extends ImageReader {
             g.translate(-sourceRegion.getX(), -sourceRegion.getY());
         }
         try {
-            READER.readImage((ImageInputStream) getInput(), sourceRegion, g, cmap);
+            READER.readImage((ImageInputStream) getInput(), sourceRegion, g, cmap, bc);
             return result;
         } finally {
             g.dispose();

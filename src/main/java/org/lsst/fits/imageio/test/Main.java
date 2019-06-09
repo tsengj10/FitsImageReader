@@ -1,19 +1,23 @@
 package org.lsst.fits.imageio.test;
 
-import java.awt.BorderLayout;
 import java.awt.Dimension;
-import java.awt.Rectangle;
+import java.awt.event.ActionEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
+import javax.swing.ButtonGroup;
+import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JFrame;
-import javax.swing.JPanel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JScrollPane;
 import org.lsst.fits.imageio.FITSImageReadParam;
-import org.lsst.fits.imageio.Timed;
-import org.lsst.fits.imageio.cmap.SAOColorMap;
 
 /**
  *
@@ -21,27 +25,85 @@ import org.lsst.fits.imageio.cmap.SAOColorMap;
  */
 public class Main {
 
-    public static void main(String[] args) throws IOException {
+    private ImageReader reader;
+    private FITSImageReadParam readParam;
+    private ImageComponent ic;
 
-        BufferedImage image1 = Timed.execute(()-> ImageIO.read(new File(args[0])), "Reading took %dms");  
-        System.out.println("I got an image!" + image1);
+    public static void main(String[] args) throws IOException {
+        Main main = new Main();
+        main.start(args[0]);
+    }
+
+    private void start(String file) throws IOException {
+        //BufferedImage image1 = Timed.execute(()-> ImageIO.read(new File(args[0])), "Reading took %dms");  
+        //System.out.println("I got an image!" + image1);
         Iterator<ImageReader> imageReadersByFormatName = ImageIO.getImageReadersByMIMEType("image/raft");
-        ImageReader reader = imageReadersByFormatName.next();
-        FITSImageReadParam readParam = (FITSImageReadParam) reader.getDefaultReadParam();
-        readParam.setSourceRegion(new Rectangle(4000,4000,2000,2000));
-        readParam.setColorMap(new SAOColorMap(256, "cubehelix00.sao"));
-        reader.setInput(ImageIO.createImageInputStream(new File(args[0])));
-        BufferedImage image2 = reader.read(0, readParam);
-        System.out.println("I got an image!" + image2);
+        reader = imageReadersByFormatName.next();
+        readParam = (FITSImageReadParam) reader.getDefaultReadParam();
+        //readParam.setSourceRegion(new Rectangle(4000,4000,2000,2000));
+        //readParam.setColorMap(new SAOColorMap(256, "cubehelix00.sao"));
+        reader.setInput(ImageIO.createImageInputStream(new File(file)));
+        BufferedImage image1 = reader.read(0, readParam);
+        System.out.println("I got an image!" + image1);
         //sun.java2d.loops.GraphicsPrimitiveMgr.main(new String[1]);
         //ImageIO.write(image, "TIFF", new File("/home/tonyj/Data/mega.tiff"));
-        JPanel content = new JPanel(new BorderLayout());
-        ImageComponent ic = new ImageComponent(image2);
-        content.add(ic, BorderLayout.CENTER);
+
+        JMenuBar menuBar = new JMenuBar();
+        menuBar.add(createColorMenu());
+
+        JMenu biasMenu = new JMenu("Bias");
+        ButtonGroup group = new ButtonGroup();
+        String currentBiasCorrection = readParam.getBiasCorrectionName();
+        for (String biasCorrectionMenuName : readParam.getAvailableBiasCorrections()) {
+            JCheckBoxMenuItem biasCorrectionItem = new JCheckBoxMenuItem(biasCorrectionMenuName);
+            if (biasCorrectionMenuName.equals(currentBiasCorrection)) {
+                biasCorrectionItem.setSelected(true);
+            }
+            biasCorrectionItem.addActionListener((ActionEvent e) -> {
+                readParam.setBiasCorrection(((JMenuItem) e.getSource()).getText());
+                refresh();
+            });
+            group.add(biasCorrectionItem);
+            biasMenu.add(biasCorrectionItem);
+        }
+        menuBar.add(biasMenu);
+
+        ic = new ImageComponent(image1);
         JFrame frame = new JFrame();
-        frame.setContentPane(content);
+        frame.setJMenuBar(menuBar);
+        frame.add(new JScrollPane(ic));
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(new Dimension(600, 600));
         frame.setVisible(true);
+    }
+
+    private JMenu createColorMenu() {
+        JMenu colorMenu = new JMenu("Color");
+        ButtonGroup group = new ButtonGroup();
+        String currentColorItem = readParam.getColorMapName();
+        for (String colorMenuItemName : readParam.getAvailableColorMaps()) {
+            JCheckBoxMenuItem colorMenuItem = new JCheckBoxMenuItem(colorMenuItemName);
+            if (colorMenuItemName.equals(currentColorItem)) {
+                colorMenuItem.setSelected(true);
+            }
+            colorMenuItem.addActionListener((ActionEvent e) -> {
+                readParam.setColorMap(((JMenuItem) e.getSource()).getText());
+                refresh();
+            });
+            group.add(colorMenuItem);
+            colorMenu.add(colorMenuItem);
+        }
+        return colorMenu;
+    }
+
+    private void refresh() {
+
+        try {
+            BufferedImage image1 = reader.read(0, readParam);
+            ic.setImage(image1);
+        } catch (IOException ex) {
+            Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+        }
+
     }
 }

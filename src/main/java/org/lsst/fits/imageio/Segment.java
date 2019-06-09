@@ -7,6 +7,7 @@ import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.IOException;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import nom.tam.fits.Header;
@@ -17,7 +18,7 @@ import nom.tam.fits.header.Standard;
  *
  * @author tonyj
  */
-class Segment {
+public class Segment {
 
     private static final Pattern DATASET_PATTERN = Pattern.compile("\\[(\\d+):(\\d+),(\\d+):(\\d+)\\]");
 
@@ -29,7 +30,7 @@ class Segment {
     private final int nAxis1;
     private final int nAxis2;
 
-    Segment(Header header, File file, long seekPointer) throws IOException {
+    public Segment(Header header, File file, long seekPointer) throws IOException {
         this.file = file;
         this.seekPosition = seekPointer;
         nAxis1 = header.getIntValue(Standard.NAXIS1);
@@ -39,12 +40,11 @@ class Segment {
         if (!matcher.matches()) {
             throw new IOException("Invalid datasec: " + datasetString);
         }
-        int datasec1 = Integer.parseInt(matcher.group(1));
+        int datasec1 = Integer.parseInt(matcher.group(1))-1;
         int datasec2 = Integer.parseInt(matcher.group(2));
-        int datasec3 = Integer.parseInt(matcher.group(3));
+        int datasec3 = Integer.parseInt(matcher.group(3))-1;
         int datasec4 = Integer.parseInt(matcher.group(4));
-        //TODO: Check +1
-        datasec = new Rectangle(datasec1, datasec3, datasec2 - datasec1 + 1, datasec4 - datasec3 + 1);
+        datasec = new Rectangle(datasec1, datasec3, datasec2 - datasec1, datasec4 - datasec3);
         // Hard wired to use WCSQ coordinates (raft level coordinates)
         double pc1_1 = header.getDoubleValue("PC1_1Q");
         double pc2_2 = header.getDoubleValue("PC2_2Q");
@@ -62,7 +62,7 @@ class Segment {
         wcs = new Rectangle2D.Double(x, y, width, height);
     }
 
-    int getDataSize() {
+    public int getDataSize() {
         return nAxis1 * nAxis2 * 4;
     }
 
@@ -70,15 +70,15 @@ class Segment {
         return file;
     }
 
-    long getSeekPosition() {
+    public long getSeekPosition() {
         return seekPosition;
     }
 
-    int getNAxis1() {
+    public int getNAxis1() {
         return nAxis1;
     }
 
-    int getNAxis2() {
+    public int getNAxis2() {
         return nAxis2;
     }
 
@@ -86,7 +86,7 @@ class Segment {
         return wcsTranslation;
     }
 
-    Rectangle getDataSec() {
+    public Rectangle getDataSec() {
         return datasec;
     }
 
@@ -98,4 +98,32 @@ class Segment {
     public String toString() {
         return "Segment{" + "file=" + file + ", seekPosition=" + seekPosition + '}';
     }
+
+    @Override
+    public int hashCode() {
+        int hash = 7;
+        hash = 79 * hash + Objects.hashCode(this.file);
+        hash = 79 * hash + (int) (this.seekPosition ^ (this.seekPosition >>> 32));
+        return hash;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null) {
+            return false;
+        }
+        if (getClass() != obj.getClass()) {
+            return false;
+        }
+        final Segment other = (Segment) obj;
+        if (this.seekPosition != other.seekPosition) {
+            return false;
+        }
+        return Objects.equals(this.file, other.file);
+    }
+
+    
 }

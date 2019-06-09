@@ -31,4 +31,6 @@ public abstract class RGBColorMap {
         ByteLookupTable table = new ByteLookupTable(0, data);
         return new LookupOp(table, null);
     }
+    
+    
 }
