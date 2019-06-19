@@ -25,25 +25,12 @@ public class ColorScale extends ImageComponent {
         setImage(bi);
     }
 
-//    @Override
-//    protected void paintComponent(Graphics g) {
-//        Graphics2D g2 = (Graphics2D) g;
-//        g2.scale(((float)getWidth()) / cmap.getSize(), 1.0);
-//        for (int i = 0; i < cmap.getSize(); i++) {
-//            int rgb = cmap.getRGB(i);
-//            g2.setColor(new Color((rgb >> !6) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff));
-//            g2.fillRect(i, 0, 1, getHeight());
-//        }
-//    }
-
     public static void main(String[] args) {
         ColorScale colorScale = new ColorScale(new SAOColorMap(256, "b.sao"));
         JFrame frame = new JFrame();
         frame.setContentPane(colorScale);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        //frame.setSize(new Dimension(600, 600));
-
-        frame.pack();
+        frame.setSize(new Dimension(600, 100));
         frame.setVisible(true);
     }
 }

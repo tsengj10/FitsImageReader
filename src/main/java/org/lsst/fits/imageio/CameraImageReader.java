@@ -31,6 +31,7 @@ public class CameraImageReader extends ImageReader {
     public static final ImageTypeSpecifier IMAGE_TYPE = ImageTypeSpecifier.createFromBufferedImageType(BufferedImage.TYPE_INT_RGB);
     public static final RGBColorMap DEFAULT_COLOR_MAP = new SAOColorMap(256, "grey.sao");
     public static final BiasCorrection DEFAULT_BIAS_CORRECTION = new NullBiasCorrection();
+    private boolean showBiasRegion;
     
     static {
         FitsFactory.setUseHierarch(true);
@@ -63,7 +64,7 @@ public class CameraImageReader extends ImageReader {
 
     @Override
     public int getWidth(int imageIndex) throws IOException {
-        return 3 * 4096 + 4 * 100;
+        return 3 * 4096 + 4 * 100 + (showBiasRegion ? 1600 : 0);
     }
 
     @Override
@@ -103,7 +104,8 @@ public class CameraImageReader extends ImageReader {
         Rectangle sourceRegion = param == null ? null : param.getSourceRegion();
         RGBColorMap cmap = param instanceof FITSImageReadParam ? ((FITSImageReadParam) param).getColorMap() : DEFAULT_COLOR_MAP;
         BiasCorrection bc = param instanceof FITSImageReadParam ? ((FITSImageReadParam) param).getBiasCorrection(): DEFAULT_BIAS_CORRECTION;
-
+        showBiasRegion = param instanceof FITSImageReadParam ? ((FITSImageReadParam) param).isShowBiasRegions(): false;
+        
         // Note, graphics and source region being flipped in Y to comply with Camera visualization standards
         if (sourceRegion == null) {
             result = IMAGE_TYPE.createBufferedImage(getWidth(0), getHeight(0));
@@ -119,7 +121,7 @@ public class CameraImageReader extends ImageReader {
             g.translate(-sourceRegion.getX(), -sourceRegion.getY());
         }
         try {
-            READER.readImage((ImageInputStream) getInput(), sourceRegion, g, cmap, bc);
+            READER.readImage((ImageInputStream) getInput(), sourceRegion, g, cmap, bc, showBiasRegion);
             return result;
         } finally {
             g.dispose();

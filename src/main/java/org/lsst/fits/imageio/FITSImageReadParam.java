@@ -17,6 +17,7 @@ import org.lsst.fits.imageio.cmap.SAOColorMap;
  */
 public class FITSImageReadParam extends ImageReadParam {
 
+    private boolean showBiasRegions = false;
     private final GetSetAvailable<BiasCorrection> bc
             = new GetSetAvailable<>(CameraImageReader.DEFAULT_BIAS_CORRECTION, "Bias Correction",
                     new LinkedHashMap<String, BiasCorrection>() {
@@ -34,6 +35,14 @@ public class FITSImageReadParam extends ImageReadParam {
                     put("Cube Helix", new SAOColorMap(256, "cubehelix00.sao"));
                 }
             });
+
+    public boolean isShowBiasRegions() {
+        return showBiasRegions;
+    }
+
+    public void setShowBiasRegions(boolean showBiasRegions) {
+        this.showBiasRegions = showBiasRegions;
+    }
 
     public RGBColorMap getColorMap() {
         return colorMap.getValue();

@@ -16,7 +16,7 @@ import javax.swing.JFrame;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
-import javax.swing.JScrollPane;
+import javax.swing.SwingUtilities;
 import org.lsst.fits.imageio.FITSImageReadParam;
 
 /**
@@ -50,7 +50,22 @@ public class Main {
 
         JMenuBar menuBar = new JMenuBar();
         menuBar.add(createColorMenu());
+        menuBar.add(createBiasMenu());
+        menuBar.add(createOverscanMenu());
 
+        ic = new ImageComponent(true, image1);
+        SwingUtilities.invokeLater(() -> {
+            JFrame frame = new JFrame();
+            frame.setJMenuBar(menuBar);
+            frame.add(ic);
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.setSize(new Dimension(600, 600));
+            frame.setVisible(true);
+        });
+
+    }
+
+    private JMenu createBiasMenu() {
         JMenu biasMenu = new JMenu("Bias");
         ButtonGroup group = new ButtonGroup();
         String currentBiasCorrection = readParam.getBiasCorrectionName();
@@ -66,15 +81,18 @@ public class Main {
             group.add(biasCorrectionItem);
             biasMenu.add(biasCorrectionItem);
         }
-        menuBar.add(biasMenu);
+        return biasMenu;
+    }
 
-        ic = new ImageComponent(image1);
-        JFrame frame = new JFrame();
-        frame.setJMenuBar(menuBar);
-        frame.add(new JScrollPane(ic));
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(new Dimension(600, 600));
-        frame.setVisible(true);
+    private JMenu createOverscanMenu() {
+        JMenu overscanMenu = new JMenu("Overscan");
+        final JCheckBoxMenuItem show = new JCheckBoxMenuItem("Show");
+        show.addActionListener((ActionEvent e) -> {
+            readParam.setShowBiasRegions(((JMenuItem) e.getSource()).isSelected());
+            refresh();
+        });
+        overscanMenu.add(show);
+        return overscanMenu;
     }
 
     private JMenu createColorMenu() {

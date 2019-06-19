@@ -29,8 +29,15 @@ public class Segment {
     private Rectangle datasec;
     private final int nAxis1;
     private final int nAxis2;
+    private double crval1;
+    private double crval2;
+    private double pc1_1;
+    private double pc2_2;
+    private int channel;
+    private int ccdX;
+    private int ccdY;
 
-    public Segment(Header header, File file, long seekPointer) throws IOException {
+    public Segment(Header header, File file, long seekPointer, String ccdSlot) throws IOException {
         this.file = file;
         this.seekPosition = seekPointer;
         nAxis1 = header.getIntValue(Standard.NAXIS1);
@@ -46,10 +53,13 @@ public class Segment {
         int datasec4 = Integer.parseInt(matcher.group(4));
         datasec = new Rectangle(datasec1, datasec3, datasec2 - datasec1, datasec4 - datasec3);
         // Hard wired to use WCSQ coordinates (raft level coordinates)
-        double pc1_1 = header.getDoubleValue("PC1_1Q");
-        double pc2_2 = header.getDoubleValue("PC2_2Q");
-        double crval1 = header.getDoubleValue("CRVAL1Q");
-        double crval2 = header.getDoubleValue("CRVAL2Q");
+        pc1_1 = header.getDoubleValue("PC1_1Q");
+        pc2_2 = header.getDoubleValue("PC2_2Q");
+        crval1 = header.getDoubleValue("CRVAL1Q");
+        crval2 = header.getDoubleValue("CRVAL2Q");
+        channel = header.getIntValue("CHANNEL");
+        ccdX = Integer.parseInt(ccdSlot.substring(1,2));
+        ccdY = Integer.parseInt(ccdSlot.substring(2,3));
         wcsTranslation = new AffineTransform();
         wcsTranslation.translate(crval1, crval2);
         wcsTranslation.scale(pc1_1, pc2_2);
@@ -82,8 +92,18 @@ public class Segment {
         return nAxis2;
     }
 
-    AffineTransform getWCSTranslation() {
-        return wcsTranslation;
+    AffineTransform getWCSTranslation(boolean includeOverscan) {
+        if (includeOverscan) {
+            int parallel_overscan = nAxis2 - datasec.height;
+            int serial_overscan = nAxis1 - datasec.width;
+            AffineTransform wcsTranslation = new AffineTransform();
+            int c = channel>8 ? 16 - channel : channel-1;
+            wcsTranslation.translate(crval1 + ccdY*serial_overscan*8 + (c%8)*serial_overscan, crval2 - parallel_overscan*pc2_2);
+            wcsTranslation.scale(pc1_1, pc2_2);
+            return wcsTranslation;
+        } else {
+            return wcsTranslation;
+        }
     }
 
     public Rectangle getDataSec() {

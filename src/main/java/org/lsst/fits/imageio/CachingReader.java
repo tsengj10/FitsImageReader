@@ -4,6 +4,8 @@ import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.RemovalCause;
+import java.awt.Color;
+import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
@@ -105,7 +107,7 @@ public class CachingReader {
     }
 
     @SuppressWarnings("null")
-    void readImage(ImageInputStream fileInput, Rectangle sourceRegion, Graphics2D g, RGBColorMap cmap, BiasCorrection bc) throws IOException {
+    void readImage(ImageInputStream fileInput, Rectangle sourceRegion, Graphics2D g, RGBColorMap cmap, BiasCorrection bc, boolean showBiasRegion) throws IOException {
 
         try {
             Queue<CompletableFuture> l1 = new ConcurrentLinkedQueue<>();
@@ -122,9 +124,14 @@ public class CachingReader {
                             l3.add(fbi.thenAccept((BufferedImage bi) -> {
                                 Timed.execute(() -> {
                                     Graphics2D g2 = (Graphics2D) g.create();
-                                    g2.transform(segment.getWCSTranslation());
+                                    g2.transform(segment.getWCSTranslation(showBiasRegion));
                                     Rectangle datasec = segment.getDataSec();
-                                    BufferedImage subimage = bi.getSubimage(datasec.x, datasec.y, datasec.width, datasec.height);
+                                    BufferedImage subimage;
+                                    if (showBiasRegion) {
+                                        subimage = bi;
+                                    } else {
+                                        subimage = bi.getSubimage(datasec.x, datasec.y, datasec.width, datasec.height);
+                                    }
                                     if (cmap != CameraImageReader.DEFAULT_COLOR_MAP) {
                                         LookupOp op = cmap.getLookupOp();
                                         subimage = op.filter(subimage, null);
@@ -167,11 +174,15 @@ public class CachingReader {
 
     private static List<Segment> readSegments(File flle, BufferedFile bf) throws IOException, TruncatedFileException {
         List<Segment> result = new ArrayList<>();
+        String ccdSlot = null;
         for (int i = 0; i < 17; i++) {
             Header header = new Header(bf);
             // Skip primary header, assumes file contains 16 image extensions
+            if (i == 0) {
+                ccdSlot = header.getStringValue("CCDSLOT");
+            }
             if (i > 0) {
-                Segment segment = new Segment(header, flle, bf.getFilePointer());
+                Segment segment = new Segment(header, flle, bf.getFilePointer(), ccdSlot);
                 // Skip the data (for now)
                 final int dataSize = segment.getDataSize();
                 int pad = FitsUtil.padding(dataSize);
@@ -203,7 +214,7 @@ public class CachingReader {
         int[] count = new int[1 << 18];
         for (int x = datasec.x; x < datasec.width + datasec.x; x++) {
             for (int y = datasec.y; y < datasec.height + datasec.y; y++) {
-                count[Math.max(intBuffer.get(x + y * segment.getNAxis1()) - factors.correctionFactor(x, y),0)]++;
+                count[Math.max(intBuffer.get(x + y * segment.getNAxis1()) - factors.correctionFactor(x, y), 0)]++;
             }
         }
 
@@ -217,12 +228,19 @@ public class CachingReader {
         BufferedImage image = CameraImageReader.IMAGE_TYPE.createBufferedImage(segment.getNAxis1(), segment.getNAxis2());
         WritableRaster raster = image.getRaster();
         DataBuffer db = raster.getDataBuffer();
-
+        Graphics2D graphics = image.createGraphics();
+        graphics.setColor(Color.GREEN);
+        graphics.fillRect(0, 0, datasec.x, segment.getNAxis2());
+        graphics.setColor(Color.RED);
+        graphics.fillRect(datasec.x+datasec.width, 0, segment.getNAxis1()-datasec.x-datasec.width , segment.getNAxis2());
+        graphics.setColor(Color.BLUE);
+        graphics.fillRect(datasec.x, datasec.y+datasec.height, datasec.width , segment.getNAxis2());
+        
         for (int x = datasec.x; x < datasec.width + datasec.x; x++) {
             for (int y = datasec.y; y < datasec.height + datasec.y; y++) {
-               int p = x + y * segment.getNAxis1();
-               int rgb = CameraImageReader.DEFAULT_COLOR_MAP.getRGB(cdf[Math.max(intBuffer.get(p) - factors.correctionFactor(x, y),0)] * 255 / range);
-               db.setElem(p, rgb);
+                int p = x + y * segment.getNAxis1();
+                int rgb = CameraImageReader.DEFAULT_COLOR_MAP.getRGB(cdf[Math.max(intBuffer.get(p) - factors.correctionFactor(x, y), 0)] * 255 / range);
+                db.setElem(p, rgb);
             }
         }
         return image;

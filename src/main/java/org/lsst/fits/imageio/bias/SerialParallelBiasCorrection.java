@@ -66,10 +66,11 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
     public static void main(String[] args) throws IOException, TruncatedFileException {
         File file = new File("/home/tonyj/Data/MC_C_20190413_000237/MC_C_20190413_000237_R22_S11.fits");
         BufferedFile bf = new BufferedFile(file, "r");
-        Header header = new Header(bf);
+        @SuppressWarnings("UnusedAssignment")
+        Header header = new Header(bf); // Skip primary header
         header = new Header(bf);
 
-        Segment segment = new Segment(header, file, bf.getFilePointer());
+        Segment segment = new Segment(header, file, bf.getFilePointer(),"S11");
         ByteBuffer bb = ByteBuffer.allocateDirect(segment.getDataSize());
         FileChannel channel = bf.getChannel();
         int len = channel.read(bb, segment.getSeekPosition());
@@ -96,6 +97,7 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
             this.parallelBias = parallelBias;
         }
         
+        @Override
         public int correctionFactor(int x, int y) {
             return serialBias[y-datasec.y] + parallelBias[x-datasec.x];
         }
