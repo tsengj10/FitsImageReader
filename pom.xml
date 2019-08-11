@@ -10,7 +10,7 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
     </properties>
-    <name>FITS Test</name>
+    <name>FITS Image Reader</name>
     <dependencies>
         <dependency>
             <groupId>gov.nasa.gsfc.heasarc</groupId>
@@ -42,4 +42,5 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+    <description>FIST image reader for use with cantaloupe.</description>
 </project>

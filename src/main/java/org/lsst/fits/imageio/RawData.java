@@ -18,11 +18,11 @@ public class RawData {
         this.bb = bb;
     }
 
-    IntBuffer asIntBuffer() {
+    public IntBuffer asIntBuffer() {
         return bb.asIntBuffer();
     }
 
-    Segment getSegment() {
+    public Segment getSegment() {
         return segment;
     }
 
