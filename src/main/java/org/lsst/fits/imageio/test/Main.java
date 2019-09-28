@@ -12,11 +12,15 @@ import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.swing.ButtonGroup;
 import javax.swing.JCheckBoxMenuItem;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
+import javax.swing.UnsupportedLookAndFeelException;
+import javax.swing.filechooser.FileFilter;
 import org.lsst.fits.imageio.FITSImageReadParam;
 
 /**
@@ -28,8 +32,11 @@ public class Main {
     private ImageReader reader;
     private FITSImageReadParam readParam;
     private ImageComponent ic;
+    private static final Logger LOG = Logger.getLogger(Main.class.getName());
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, UnsupportedLookAndFeelException, ClassNotFoundException, InstantiationException, IllegalAccessException {
+         UIManager.setLookAndFeel(
+            UIManager.getSystemLookAndFeelClassName());
         Main main = new Main();
         main.start(args[0]);
     }
@@ -37,23 +44,16 @@ public class Main {
     private void start(String file) throws IOException {
         //BufferedImage image1 = Timed.execute(()-> ImageIO.read(new File(args[0])), "Reading took %dms");  
         //System.out.println("I got an image!" + image1);
-        Iterator<ImageReader> imageReadersByFormatName = ImageIO.getImageReadersByMIMEType("image/raft");
-        reader = imageReadersByFormatName.next();
-        readParam = (FITSImageReadParam) reader.getDefaultReadParam();
-        //readParam.setSourceRegion(new Rectangle(4000,4000,2000,2000));
-        //readParam.setColorMap(new SAOColorMap(256, "cubehelix00.sao"));
-        reader.setInput(ImageIO.createImageInputStream(new File(file)));
-        BufferedImage image1 = reader.read(0, readParam);
-        System.out.println("I got an image!" + image1);
+        BufferedImage bi = open(new File(file));
         //sun.java2d.loops.GraphicsPrimitiveMgr.main(new String[1]);
         //ImageIO.write(image, "TIFF", new File("/home/tonyj/Data/mega.tiff"));
 
         JMenuBar menuBar = new JMenuBar();
+        menuBar.add(createFileMenu());
         menuBar.add(createColorMenu());
         menuBar.add(createBiasMenu());
         menuBar.add(createOverscanMenu());
-
-        ic = new ImageComponent(true, image1);
+        ic = new ImageComponent(true, bi);
         SwingUtilities.invokeLater(() -> {
             JFrame frame = new JFrame();
             frame.setJMenuBar(menuBar);
@@ -64,7 +64,49 @@ public class Main {
         });
 
     }
+    
+    private BufferedImage open(File file) throws IOException {
+        Iterator<ImageReader> imageReadersByFormatName = ImageIO.getImageReadersByMIMEType("image/raft");
+        reader = imageReadersByFormatName.next();
+        readParam = (FITSImageReadParam) reader.getDefaultReadParam();
+        //readParam.setSourceRegion(new Rectangle(4000,4000,2000,2000));
+        //readParam.setColorMap(new SAOColorMap(256, "cubehelix00.sao"));
+        reader.setInput(ImageIO.createImageInputStream(file));
+        BufferedImage image1 = reader.read(0, readParam);
+        System.out.println("I got an image!" + image1);
+        return image1;
+    }
 
+    private JMenu createFileMenu() {
+        JMenu fileMenu = new JMenu("File");
+        JMenuItem open = new JMenuItem("Open...");
+        open.addActionListener((ActionEvent event) -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setFileFilter(new FileFilter(){
+                @Override
+                public String getDescription() {
+                    return "Raft file (.raft)";
+                }
+                @Override
+                public boolean accept(File file) {
+                    return file.isDirectory() || file.getName().endsWith(".raft");
+                }
+            });
+            int rc = chooser.showOpenDialog(ic);
+            if (rc == JFileChooser.APPROVE_OPTION) {
+                BufferedImage bi;
+                try {
+                    bi = open(chooser.getSelectedFile());
+                    ic.setImage(bi);
+                } catch (IOException ex) {
+                    LOG.log(Level.SEVERE,"Unable to open file", ex);
+                }
+            }
+        });
+        fileMenu.add(open);
+        return fileMenu;
+    }
+    
     private JMenu createBiasMenu() {
         JMenu biasMenu = new JMenu("Bias");
         ButtonGroup group = new ButtonGroup();
