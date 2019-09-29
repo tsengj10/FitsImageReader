@@ -34,8 +34,10 @@ public class Segment {
     private double pc1_1;
     private double pc2_2;
     private int channel;
-    private int ccdX;
-    private int ccdY;
+//    private int ccdX;
+//    private int ccdY;
+    private double pc1_2;
+    private double pc2_1;
 
     public Segment(Header header, File file, long seekPointer, String ccdSlot) throws IOException {
         this.file = file;
@@ -43,26 +45,34 @@ public class Segment {
         nAxis1 = header.getIntValue(Standard.NAXIS1);
         nAxis2 = header.getIntValue(Standard.NAXIS2);
         String datasetString = header.getStringValue("DATASEC");
+        if (datasetString == null) {
+            throw new IOException("Missing datasec for file: " + file);
+        }
         Matcher matcher = DATASET_PATTERN.matcher(datasetString);
         if (!matcher.matches()) {
             throw new IOException("Invalid datasec: " + datasetString);
         }
-        int datasec1 = Integer.parseInt(matcher.group(1))-1;
+        int datasec1 = Integer.parseInt(matcher.group(1)) - 1;
         int datasec2 = Integer.parseInt(matcher.group(2));
-        int datasec3 = Integer.parseInt(matcher.group(3))-1;
+        int datasec3 = Integer.parseInt(matcher.group(3)) - 1;
         int datasec4 = Integer.parseInt(matcher.group(4));
         datasec = new Rectangle(datasec1, datasec3, datasec2 - datasec1, datasec4 - datasec3);
         // Hard wired to use WCSQ coordinates (raft level coordinates)
         pc1_1 = header.getDoubleValue("PC1_1Q");
         pc2_2 = header.getDoubleValue("PC2_2Q");
+        pc1_2 = header.getDoubleValue("PC1_2Q");
+        pc2_1 = header.getDoubleValue("PC2_1Q");
         crval1 = header.getDoubleValue("CRVAL1Q");
         crval2 = header.getDoubleValue("CRVAL2Q");
         channel = header.getIntValue("CHANNEL");
-        ccdX = Integer.parseInt(ccdSlot.substring(1,2));
-        ccdY = Integer.parseInt(ccdSlot.substring(2,3));
-        wcsTranslation = new AffineTransform();
-        wcsTranslation.translate(crval1, crval2);
-        wcsTranslation.scale(pc1_1, pc2_2);
+//        ccdX = Integer.parseInt(ccdSlot.substring(1,2));
+//        ccdY = Integer.parseInt(ccdSlot.substring(2,3));
+        wcsTranslation = new AffineTransform(pc1_1, pc2_1, pc1_2, pc2_2, crval1, crval2);
+        //wcsTranslation.translate(crval1, crval2);
+        //wcsTranslation.scale(pc1_1, pc2_2);
+        System.out.printf("FILE %s CCDSLOT %s\n", file, ccdSlot);
+        System.out.printf("pc1_1=%3.3g pc2_2=%3.3g pc1_2=%3.3g pc2_1=%3.3g\n", pc1_1, pc2_2, pc1_2, pc2_1);
+        System.out.printf("qcs=%s\n", wcsTranslation);
         Point2D origin = wcsTranslation.transform(new Point(datasec.x, datasec.y), null);
         Point2D corner = wcsTranslation.transform(new Point(datasec.x + datasec.width, datasec.y + datasec.height), null);
         double x = Math.min(origin.getX(), corner.getX());
@@ -94,12 +104,12 @@ public class Segment {
 
     AffineTransform getWCSTranslation(boolean includeOverscan) {
         if (includeOverscan) {
-            int parallel_overscan = nAxis2 - datasec.height;
-            int serial_overscan = nAxis1 - datasec.width;
-            AffineTransform wcsTranslation = new AffineTransform();
-            int c = channel>8 ? 16 - channel : channel-1;
-            wcsTranslation.translate(crval1 + ccdY*serial_overscan*8 + (c%8)*serial_overscan, crval2 - parallel_overscan*pc2_2);
-            wcsTranslation.scale(pc1_1, pc2_2);
+//            int parallel_overscan = nAxis2 - datasec.height;
+//            int serial_overscan = nAxis1 - datasec.width;
+//            AffineTransform wcsTranslation = new AffineTransform();
+//            int c = channel>8 ? 16 - channel : channel-1;
+//            wcsTranslation.translate(crval1 + ccdY*serial_overscan*8 + (c%8)*serial_overscan, crval2 - parallel_overscan*pc2_2);
+//            wcsTranslation.scale(pc1_1, pc2_2);
             return wcsTranslation;
         } else {
             return wcsTranslation;
@@ -113,7 +123,7 @@ public class Segment {
     boolean intersects(Rectangle sourceRegion) {
         return wcs.intersects(sourceRegion);
     }
-    
+
     @Override
     public String toString() {
         return "Segment{" + "file=" + file + ", seekPosition=" + seekPosition + '}';
@@ -145,5 +155,4 @@ public class Segment {
         return Objects.equals(this.file, other.file);
     }
 
-    
 }

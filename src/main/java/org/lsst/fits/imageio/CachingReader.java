@@ -5,7 +5,6 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import java.awt.Color;
-import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
@@ -175,11 +174,12 @@ public class CachingReader {
     private static List<Segment> readSegments(File flle, BufferedFile bf) throws IOException, TruncatedFileException {
         List<Segment> result = new ArrayList<>();
         String ccdSlot = null;
-        for (int i = 0; i < 17; i++) {
+        int nSegments = 16;
+        for (int i = 0; i < nSegments+1; i++) {
             Header header = new Header(bf);
-            // Skip primary header, assumes file contains 16 image extensions
             if (i == 0) {
                 ccdSlot = header.getStringValue("CCDSLOT");
+                if (ccdSlot.startsWith("SW")) nSegments = 8;
             }
             if (i > 0) {
                 Segment segment = new Segment(header, flle, bf.getFilePointer(), ccdSlot);
