@@ -66,9 +66,15 @@ public class Main {
     }
     
     private BufferedImage open(File file) throws IOException {
-        Iterator<ImageReader> imageReadersByFormatName = ImageIO.getImageReadersByMIMEType("image/raft");
+        int pos_suffix = file.getName().lastIndexOf('.');
+        String suffix = file.getName().substring(pos_suffix);
+        Iterator<ImageReader> imageReadersByFormatName = ImageIO.getImageReadersBySuffix(suffix);
         reader = imageReadersByFormatName.next();
         readParam = (FITSImageReadParam) reader.getDefaultReadParam();
+        if (suffix.equals(".fp")) {
+            readParam.setSourceSubsampling(8, 8, 0, 0);
+            readParam.setWCSString('F');
+        }
         //readParam.setSourceRegion(new Rectangle(4000,4000,2000,2000));
         //readParam.setColorMap(new SAOColorMap(256, "cubehelix00.sao"));
         reader.setInput(ImageIO.createImageInputStream(file));
@@ -90,6 +96,16 @@ public class Main {
                 @Override
                 public boolean accept(File file) {
                     return file.isDirectory() || file.getName().endsWith(".raft");
+                }
+            });
+            chooser.setFileFilter(new FileFilter(){
+                @Override
+                public String getDescription() {
+                    return "Focal Plane file (.fp)";
+                }
+                @Override
+                public boolean accept(File file) {
+                    return file.isDirectory() || file.getName().endsWith(".fp");
                 }
             });
             int rc = chooser.showOpenDialog(ic);

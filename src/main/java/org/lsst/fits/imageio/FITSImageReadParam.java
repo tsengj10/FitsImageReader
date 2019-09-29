@@ -35,6 +35,7 @@ public class FITSImageReadParam extends ImageReadParam {
                     put("Cube Helix", new SAOColorMap(256, "cubehelix00.sao"));
                 }
             });
+    public char wcsString = 'Q';
 
     public boolean isShowBiasRegions() {
         return showBiasRegions;
@@ -43,6 +44,16 @@ public class FITSImageReadParam extends ImageReadParam {
     public void setShowBiasRegions(boolean showBiasRegions) {
         this.showBiasRegions = showBiasRegions;
     }
+
+    public char getWCSString() {
+        return wcsString;
+    }
+
+    public void setWCSString(char wcsString) {
+        this.wcsString = wcsString;
+    }
+    
+    
 
     public RGBColorMap getColorMap() {
         return colorMap.getValue();

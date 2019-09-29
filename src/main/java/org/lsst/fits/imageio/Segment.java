@@ -38,10 +38,12 @@ public class Segment {
 //    private int ccdY;
     private double pc1_2;
     private double pc2_1;
+    private final char wcsLetter;
 
-    public Segment(Header header, File file, long seekPointer, String ccdSlot) throws IOException {
+    public Segment(Header header, File file, long seekPointer, String ccdSlot, char wcsLetter) throws IOException {
         this.file = file;
         this.seekPosition = seekPointer;
+        this.wcsLetter = wcsLetter;
         nAxis1 = header.getIntValue(Standard.NAXIS1);
         nAxis2 = header.getIntValue(Standard.NAXIS2);
         String datasetString = header.getStringValue("DATASEC");
@@ -58,12 +60,12 @@ public class Segment {
         int datasec4 = Integer.parseInt(matcher.group(4));
         datasec = new Rectangle(datasec1, datasec3, datasec2 - datasec1, datasec4 - datasec3);
         // Hard wired to use WCSQ coordinates (raft level coordinates)
-        pc1_1 = header.getDoubleValue("PC1_1Q");
-        pc2_2 = header.getDoubleValue("PC2_2Q");
-        pc1_2 = header.getDoubleValue("PC1_2Q");
-        pc2_1 = header.getDoubleValue("PC2_1Q");
-        crval1 = header.getDoubleValue("CRVAL1Q");
-        crval2 = header.getDoubleValue("CRVAL2Q");
+        pc1_1 = header.getDoubleValue("PC1_1" + wcsLetter);
+        pc2_2 = header.getDoubleValue("PC2_2" + wcsLetter);
+        pc1_2 = header.getDoubleValue("PC1_2" + wcsLetter);
+        pc2_1 = header.getDoubleValue("PC2_1" + wcsLetter);
+        crval1 = header.getDoubleValue("CRVAL1" + wcsLetter);
+        crval2 = header.getDoubleValue("CRVAL2" + wcsLetter);
         channel = header.getIntValue("CHANNEL");
 //        ccdX = Integer.parseInt(ccdSlot.substring(1,2));
 //        ccdY = Integer.parseInt(ccdSlot.substring(2,3));
@@ -126,14 +128,15 @@ public class Segment {
 
     @Override
     public String toString() {
-        return "Segment{" + "file=" + file + ", seekPosition=" + seekPosition + '}';
+        return "Segment{" + "file=" + file + ", seekPosition=" + seekPosition + ", wcsLetter=" + wcsLetter + '}';
     }
 
     @Override
     public int hashCode() {
-        int hash = 7;
-        hash = 79 * hash + Objects.hashCode(this.file);
-        hash = 79 * hash + (int) (this.seekPosition ^ (this.seekPosition >>> 32));
+        int hash = 5;
+        hash = 71 * hash + Objects.hashCode(this.file);
+        hash = 71 * hash + (int) (this.seekPosition ^ (this.seekPosition >>> 32));
+        hash = 71 * hash + Objects.hashCode(this.wcsLetter);
         return hash;
     }
 
@@ -152,7 +155,12 @@ public class Segment {
         if (this.seekPosition != other.seekPosition) {
             return false;
         }
+        if (!Objects.equals(this.wcsLetter, other.wcsLetter)) {
+            return false;
+        }
         return Objects.equals(this.file, other.file);
     }
+
+
 
 }

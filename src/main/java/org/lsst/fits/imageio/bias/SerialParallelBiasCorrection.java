@@ -70,7 +70,7 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
         Header header = new Header(bf); // Skip primary header
         header = new Header(bf);
 
-        Segment segment = new Segment(header, file, bf.getFilePointer(),"S11");
+        Segment segment = new Segment(header, file, bf.getFilePointer(),"S11", 'Q');
         ByteBuffer bb = ByteBuffer.allocateDirect(segment.getDataSize());
         FileChannel channel = bf.getChannel();
         int len = channel.read(bb, segment.getSeekPosition());

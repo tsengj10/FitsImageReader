@@ -64,12 +64,20 @@ public class CameraImageReader extends ImageReader {
 
     @Override
     public int getWidth(int imageIndex) throws IOException {
-        return 3 * 4096 + 4 * 100 + (showBiasRegion ? 1600 : 0);
+        if (this.getOriginatingProvider() instanceof CameraRaftImageReaderSpi) {
+            return 3 * 4096 + 4 * 100 + (showBiasRegion ? 1600 : 0);
+        } else {
+            return 15 * 4096 + 16 * 100;
+        }
     }
 
     @Override
     public int getHeight(int imageIndex) throws IOException {
-        return 3 * 4096 + 4 * 100;
+        if (this.getOriginatingProvider() instanceof CameraRaftImageReaderSpi) {
+            return 3 * 4096 + 4 * 100;
+        } else {
+            return 15 * 4096 + 16 * 100;            
+        }
     }
 
     @Override
@@ -90,6 +98,8 @@ public class CameraImageReader extends ImageReader {
     @Override
     public BufferedImage read(int imageIndex, ImageReadParam param) throws IOException {
 
+        int xSubSampling = 1;
+        int ySubSampling = 1;
         if (param != null) {
             LOG.log(Level.INFO, "read called sourceRegion={0}", param.getSourceRegion());
             LOG.log(Level.INFO, "read called destination={0}", param.getDestination());
@@ -98,6 +108,8 @@ public class CameraImageReader extends ImageReader {
             LOG.log(Level.INFO, "read called ysub={0}", param.getSourceYSubsampling());
             LOG.log(Level.INFO, "read called xoffsub={0}", param.getSubsamplingXOffset());
             LOG.log(Level.INFO, "read called yoffsub={0}", param.getSubsamplingYOffset());
+            xSubSampling = param.getSourceXSubsampling();
+            ySubSampling = param.getSourceYSubsampling();
         }
         BufferedImage result;
         Graphics2D g;
@@ -105,13 +117,14 @@ public class CameraImageReader extends ImageReader {
         RGBColorMap cmap = param instanceof FITSImageReadParam ? ((FITSImageReadParam) param).getColorMap() : DEFAULT_COLOR_MAP;
         BiasCorrection bc = param instanceof FITSImageReadParam ? ((FITSImageReadParam) param).getBiasCorrection(): DEFAULT_BIAS_CORRECTION;
         showBiasRegion = param instanceof FITSImageReadParam ? ((FITSImageReadParam) param).isShowBiasRegions(): false;
+        char wcsString = param instanceof FITSImageReadParam ? ((FITSImageReadParam) param).getWCSString() : 'Q';
         
         // Note, graphics and source region being flipped in Y to comply with Camera visualization standards
         if (sourceRegion == null) {
-            result = IMAGE_TYPE.createBufferedImage(getWidth(0), getHeight(0));
+            result = IMAGE_TYPE.createBufferedImage(getWidth(0)/xSubSampling, getHeight(0)/ySubSampling);
             g = result.createGraphics();
-            g.translate(0,getHeight(0));
-            g.scale(1,-1);
+            g.translate(0,getHeight(0)/ySubSampling);
+            g.scale(1.0/xSubSampling,-1.0/ySubSampling);
         } else {
             sourceRegion = new Rectangle(sourceRegion.x, getHeight(0)-sourceRegion.y-sourceRegion.height, sourceRegion.width, sourceRegion.height);
             result = IMAGE_TYPE.createBufferedImage((int) sourceRegion.getWidth(), (int) sourceRegion.getHeight());
@@ -121,7 +134,7 @@ public class CameraImageReader extends ImageReader {
             g.translate(-sourceRegion.getX(), -sourceRegion.getY());
         }
         try {
-            READER.readImage((ImageInputStream) getInput(), sourceRegion, g, cmap, bc, showBiasRegion);
+            READER.readImage((ImageInputStream) getInput(), sourceRegion, g, cmap, bc, showBiasRegion, wcsString);
             return result;
         } finally {
             g.dispose();
