@@ -5,8 +5,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
-import java.nio.channels.FileChannel;
 import java.util.Arrays;
+import nom.tam.fits.FitsException;
 import nom.tam.fits.Header;
 import nom.tam.fits.TruncatedFileException;
 import nom.tam.util.BufferedFile;
@@ -30,55 +30,52 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
         int minSerialBias = 999999;
         int serialOverscanStart = datasec.x + datasec.width + 4;
         int position = 0;
-        for (int y = datasec.y; y < datasec.height+datasec.y; y++) {
+        for (int y = datasec.y; y < datasec.height + datasec.y; y++) {
             int biasSum = 0;
             for (int x = serialOverscanStart; x < nAxis1; x++) {
                 biasSum += data.get(position + x);
             }
             biasSum /= nAxis1 - serialOverscanStart;
-            serialBias[y-datasec.y] = biasSum;
-            minSerialBias = Math.min(minSerialBias,biasSum);
+            serialBias[y - datasec.y] = biasSum;
+            minSerialBias = Math.min(minSerialBias, biasSum);
             position += nAxis1;
         }
-        for (int i=0; i<serialBias.length; i++) serialBias[i]-=minSerialBias;
+        for (int i = 0; i < serialBias.length; i++) {
+            serialBias[i] -= minSerialBias;
+        }
 
         // Deal with parallel overscan
         int[] parallelBias = new int[datasec.width];
         int minParallelBias = 999999;
-        
+
         int parallelOverscanStart = datasec.y + datasec.height + 4;
 
-        for (int x = datasec.x; x < datasec.width+datasec.x; x++) {
+        for (int x = datasec.x; x < datasec.width + datasec.x; x++) {
             int biasSum = 0;
             for (int y = parallelOverscanStart; y < nAxis2; y++) {
-                biasSum += data.get(x + y*nAxis1);
+                biasSum += data.get(x + y * nAxis1);
             }
             biasSum /= nAxis2 - parallelOverscanStart;
-            parallelBias[x-datasec.x] = biasSum;
-            minParallelBias = Math.min(minParallelBias,biasSum);
+            parallelBias[x - datasec.x] = biasSum;
+            minParallelBias = Math.min(minParallelBias, biasSum);
             position += nAxis1;
-        }        
-        for (int i=0; i<parallelBias.length; i++) parallelBias[i]-=minParallelBias;
+        }
+        for (int i = 0; i < parallelBias.length; i++) {
+            parallelBias[i] -= minParallelBias;
+        }
 
         return new SimpleCorrectionFactors(datasec, serialBias, parallelBias);
     }
 
-    public static void main(String[] args) throws IOException, TruncatedFileException {
+    public static void main(String[] args) throws IOException, TruncatedFileException, FitsException {
         File file = new File("/home/tonyj/Data/MC_C_20190413_000237/MC_C_20190413_000237_R22_S11.fits");
         BufferedFile bf = new BufferedFile(file, "r");
         @SuppressWarnings("UnusedAssignment")
         Header header = new Header(bf); // Skip primary header
         header = new Header(bf);
 
-        Segment segment = new Segment(header, file, bf.getFilePointer(),"S11", 'Q');
-        ByteBuffer bb = ByteBuffer.allocateDirect(segment.getDataSize());
-        FileChannel channel = bf.getChannel();
-        int len = channel.read(bb, segment.getSeekPosition());
-        if (bb.remaining() != 0) {
-            throw new IOException("Unexpected length " + len);
-        }
-        bb.flip();
-        IntBuffer intBuffer = bb.asIntBuffer();
+        Segment segment = new Segment(header, file, bf, "S11", 'Q');
+        IntBuffer intBuffer = segment.readData();
 
         BiasCorrection bc = new SerialParallelBiasCorrection();
         CorrectionFactors factors = bc.compute(intBuffer, segment);
@@ -96,10 +93,10 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
             this.serialBias = serialBias;
             this.parallelBias = parallelBias;
         }
-        
+
         @Override
         public int correctionFactor(int x, int y) {
-            return serialBias[y-datasec.y] + parallelBias[x-datasec.x];
+            return serialBias[y - datasec.y] + parallelBias[x - datasec.x];
         }
 
         @Override

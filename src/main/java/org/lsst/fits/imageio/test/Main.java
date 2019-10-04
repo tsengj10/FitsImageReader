@@ -73,7 +73,7 @@ public class Main {
         readParam = (FITSImageReadParam) reader.getDefaultReadParam();
         if (suffix.equals(".fp")) {
             readParam.setSourceSubsampling(8, 8, 0, 0);
-            readParam.setWCSString('F');
+            readParam.setWCSString('E');
         }
         //readParam.setSourceRegion(new Rectangle(4000,4000,2000,2000));
         //readParam.setColorMap(new SAOColorMap(256, "cubehelix00.sao"));

@@ -13,9 +13,7 @@ import java.awt.image.LookupOp;
 import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
-import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
@@ -29,7 +27,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import javax.imageio.stream.ImageInputStream;
-import nom.tam.fits.FitsUtil;
+import nom.tam.fits.FitsException;
 import nom.tam.fits.Header;
 import nom.tam.fits.TruncatedFileException;
 import nom.tam.util.BufferedFile;
@@ -107,6 +105,11 @@ public class CachingReader {
 
     }
 
+    int preReadImage(ImageInputStream fileInput) {
+        List<String> lines = linesCache.get(fileInput);
+        return lines == null ? 0 : lines.size();
+    }
+    
     @SuppressWarnings("null")
     void readImage(ImageInputStream fileInput, Rectangle sourceRegion, Graphics2D g, RGBColorMap cmap, BiasCorrection bc, boolean showBiasRegion, char wcsLetter) throws IOException {
 
@@ -191,7 +194,7 @@ public class CachingReader {
         }
     }
 
-    private static List<Segment> readSegments(File file, BufferedFile bf, char wcsLetter) throws IOException, TruncatedFileException {
+    private static List<Segment> readSegments(File file, BufferedFile bf, char wcsLetter) throws IOException, TruncatedFileException, FitsException {
         List<Segment> result = new ArrayList<>();
         String ccdSlot = null;
         int nSegments = 16;
@@ -202,26 +205,16 @@ public class CachingReader {
                 if (ccdSlot.startsWith("SW")) nSegments = 8;
             }
             if (i > 0) {
-                Segment segment = new Segment(header, file, bf.getFilePointer(), ccdSlot, wcsLetter);
-                // Skip the data (for now)
-                final int dataSize = segment.getDataSize();
-                int pad = FitsUtil.padding(dataSize);
-                bf.skip(dataSize + pad);
+                Segment segment = new Segment(header, file, bf, ccdSlot, wcsLetter);
                 result.add(segment);
             }
         }
         return result;
     }
 
-    private static RawData readRawData(Segment segment, BufferedFile bf) throws IOException {
-        ByteBuffer bb = ByteBuffer.allocateDirect(segment.getDataSize());
-        FileChannel channel = bf.getChannel();
-        int len = channel.read(bb, segment.getSeekPosition());
-        if (bb.remaining() != 0) {
-            throw new IOException("Unexpected length " + len);
-        }
-        bb.flip();
-        return new RawData(segment, bb);
+    private static RawData readRawData(Segment segment, BufferedFile bf) throws IOException, FitsException {
+        IntBuffer ib = segment.readData();
+        return new RawData(segment, ib);
     }
 
     private static BufferedImage createBufferedImage(RawData rawData, BiasCorrection bc) throws IOException {

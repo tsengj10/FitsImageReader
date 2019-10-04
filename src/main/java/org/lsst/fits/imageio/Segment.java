@@ -7,11 +7,21 @@ import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
+import java.nio.channels.FileChannel;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import nom.tam.fits.BasicHDU;
+import nom.tam.fits.Data;
+import nom.tam.fits.FitsException;
+import nom.tam.fits.FitsFactory;
+import nom.tam.fits.FitsUtil;
 import nom.tam.fits.Header;
 import nom.tam.fits.header.Standard;
+import nom.tam.image.compression.hdu.CompressedImageHDU;
+import nom.tam.util.BufferedFile;
 
 /**
  * Represents one segment (amplifier) of a FITS file
@@ -39,13 +49,33 @@ public class Segment {
     private double pc1_2;
     private double pc2_1;
     private final char wcsLetter;
+    private final BufferedFile bf;
+    private final int rawDataLength;
+    private final boolean isCompressed;
+    private final BasicHDU<?> compressedImageHDU;
 
-    public Segment(Header header, File file, long seekPointer, String ccdSlot, char wcsLetter) throws IOException {
+    public Segment(Header header, File file, BufferedFile bf, String ccdSlot, char wcsLetter) throws IOException, FitsException {
         this.file = file;
-        this.seekPosition = seekPointer;
+        this.bf = bf;
+        this.seekPosition = bf.getFilePointer();
         this.wcsLetter = wcsLetter;
-        nAxis1 = header.getIntValue(Standard.NAXIS1);
-        nAxis2 = header.getIntValue(Standard.NAXIS2);
+        isCompressed = header.getBooleanValue("ZIMAGE");
+        if (isCompressed) {
+            nAxis1 = header.getIntValue("ZNAXIS1");
+            nAxis2 = header.getIntValue("ZNAXIS2");   
+            rawDataLength = header.getIntValue(Standard.NAXIS1) * header.getIntValue(Standard.NAXIS2) +  header.getIntValue("PCOUNT");
+            Data data = header.makeData();
+            data.read(bf);
+            compressedImageHDU = FitsFactory.hduFactory(header, data);
+        } else {
+            nAxis1 = header.getIntValue(Standard.NAXIS1);
+            nAxis2 = header.getIntValue(Standard.NAXIS2);
+            rawDataLength = nAxis1 * nAxis2 * 4;
+            // Skip the data (for now)
+            int pad = FitsUtil.padding(rawDataLength);
+            bf.skip(rawDataLength + pad);
+            compressedImageHDU = null;
+        }
         String datasetString = header.getStringValue("DATASEC");
         if (datasetString == null) {
             throw new IOException("Missing datasec for file: " + file);
@@ -70,30 +100,49 @@ public class Segment {
 //        ccdX = Integer.parseInt(ccdSlot.substring(1,2));
 //        ccdY = Integer.parseInt(ccdSlot.substring(2,3));
         wcsTranslation = new AffineTransform(pc1_1, pc2_1, pc1_2, pc2_2, crval1, crval2);
+        wcsTranslation.translate(datasec.x + 0.5, datasec.y + 0.5);
         //wcsTranslation.translate(crval1, crval2);
         //wcsTranslation.scale(pc1_1, pc2_2);
-        System.out.printf("FILE %s CCDSLOT %s\n", file, ccdSlot);
-        System.out.printf("pc1_1=%3.3g pc2_2=%3.3g pc1_2=%3.3g pc2_1=%3.3g\n", pc1_1, pc2_2, pc1_2, pc2_1);
-        System.out.printf("qcs=%s\n", wcsTranslation);
-        Point2D origin = wcsTranslation.transform(new Point(datasec.x, datasec.y), null);
-        Point2D corner = wcsTranslation.transform(new Point(datasec.x + datasec.width, datasec.y + datasec.height), null);
+        //System.out.printf("FILE %s CCDSLOT %s\n", file, ccdSlot);
+        //System.out.printf("pc1_1=%3.3g pc2_2=%3.3g pc1_2=%3.3g pc2_1=%3.3g\n", pc1_1, pc2_2, pc1_2, pc2_1);
+        //System.out.printf("qcs=%s\n", wcsTranslation);
+        Point2D origin = wcsTranslation.transform(new Point(0,0), null);
+        Point2D corner = wcsTranslation.transform(new Point(datasec.width, datasec.height), null);
         double x = Math.min(origin.getX(), corner.getX());
         double y = Math.min(origin.getY(), corner.getY());
         double width = Math.abs(origin.getX() - corner.getX());
         double height = Math.abs(origin.getY() - corner.getY());
         wcs = new Rectangle2D.Double(x, y, width, height);
+        //System.out.printf("wcs=%s\n", wcs);
     }
 
-    public int getDataSize() {
+    public int getImageSize() {
         return nAxis1 * nAxis2 * 4;
+    }
+    
+    public int getDataSize() {
+        return rawDataLength;
     }
 
     File getFile() {
         return file;
     }
 
-    public long getSeekPosition() {
-        return seekPosition;
+    public IntBuffer readData() throws IOException, FitsException {
+        if (isCompressed) {
+            synchronized (bf) {
+                return (IntBuffer) ((CompressedImageHDU) compressedImageHDU).getUncompressedData();
+            }
+        } else {
+            ByteBuffer bb = ByteBuffer.allocateDirect(rawDataLength);
+            FileChannel fileChannel = bf.getChannel();
+            int len = fileChannel.read(bb, seekPosition);
+            if (bb.remaining() != 0) {
+                throw new IOException("Unexpected length " + len);
+            }
+            bb.flip();
+            return bb.asIntBuffer();
+        }
     }
 
     public int getNAxis1() {
@@ -160,7 +209,5 @@ public class Segment {
         }
         return Objects.equals(this.file, other.file);
     }
-
-
 
 }

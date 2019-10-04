@@ -1,6 +1,5 @@
 package org.lsst.fits.imageio;
 
-import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Objects;
 
@@ -11,15 +10,15 @@ import java.util.Objects;
 public class RawData {
 
     private final Segment segment;
-    private final ByteBuffer bb;
+    private final IntBuffer ib;
 
-    RawData(Segment segment, ByteBuffer bb) {
+    RawData(Segment segment, IntBuffer ib) {
         this.segment = segment;
-        this.bb = bb;
+        this.ib = ib;
     }
 
     public IntBuffer asIntBuffer() {
-        return bb.asIntBuffer();
+        return ib;
     }
 
     public Segment getSegment() {

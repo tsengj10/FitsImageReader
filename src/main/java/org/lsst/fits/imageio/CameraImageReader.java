@@ -31,7 +31,11 @@ public class CameraImageReader extends ImageReader {
     public static final ImageTypeSpecifier IMAGE_TYPE = ImageTypeSpecifier.createFromBufferedImageType(BufferedImage.TYPE_INT_RGB);
     public static final RGBColorMap DEFAULT_COLOR_MAP = new SAOColorMap(256, "grey.sao");
     public static final BiasCorrection DEFAULT_BIAS_CORRECTION = new NullBiasCorrection();
+    
+    public enum ImageType { FOCAL_PLANE, RAFT };
+
     private boolean showBiasRegion;
+    private ImageType imageType;
     
     static {
         FitsFactory.setUseHierarch(true);
@@ -54,7 +58,9 @@ public class CameraImageReader extends ImageReader {
     @Override
     public void setInput(Object input, boolean seekForwardOnly, boolean ignoreMetadata) {
         super.setInput(input, seekForwardOnly, ignoreMetadata);
-
+        int lines = READER.preReadImage((ImageInputStream) input);
+        imageType = lines>9 ? ImageType.FOCAL_PLANE : ImageType.RAFT;
+        
     }
 
     @Override
@@ -64,7 +70,7 @@ public class CameraImageReader extends ImageReader {
 
     @Override
     public int getWidth(int imageIndex) throws IOException {
-        if (this.getOriginatingProvider() instanceof CameraRaftImageReaderSpi) {
+        if (imageType == ImageType.RAFT) {
             return 3 * 4096 + 4 * 100 + (showBiasRegion ? 1600 : 0);
         } else {
             return 15 * 4096 + 16 * 100;
@@ -73,7 +79,7 @@ public class CameraImageReader extends ImageReader {
 
     @Override
     public int getHeight(int imageIndex) throws IOException {
-        if (this.getOriginatingProvider() instanceof CameraRaftImageReaderSpi) {
+        if (imageType == ImageType.RAFT) {
             return 3 * 4096 + 4 * 100;
         } else {
             return 15 * 4096 + 16 * 100;            
@@ -113,11 +119,23 @@ public class CameraImageReader extends ImageReader {
         }
         BufferedImage result;
         Graphics2D g;
+        RGBColorMap cmap;
+        BiasCorrection bc;
+        char wcsString;
         Rectangle sourceRegion = param == null ? null : param.getSourceRegion();
-        RGBColorMap cmap = param instanceof FITSImageReadParam ? ((FITSImageReadParam) param).getColorMap() : DEFAULT_COLOR_MAP;
-        BiasCorrection bc = param instanceof FITSImageReadParam ? ((FITSImageReadParam) param).getBiasCorrection(): DEFAULT_BIAS_CORRECTION;
-        showBiasRegion = param instanceof FITSImageReadParam ? ((FITSImageReadParam) param).isShowBiasRegions(): false;
-        char wcsString = param instanceof FITSImageReadParam ? ((FITSImageReadParam) param).getWCSString() : 'Q';
+        if (param instanceof FITSImageReadParam) {
+            FITSImageReadParam fitsParam = (FITSImageReadParam) param;
+            cmap = fitsParam.getColorMap();
+            bc = fitsParam.getBiasCorrection();
+            showBiasRegion = fitsParam.isShowBiasRegions();
+            wcsString = fitsParam.getWCSString();
+        } else {
+            cmap = DEFAULT_COLOR_MAP;
+            bc = DEFAULT_BIAS_CORRECTION;
+            showBiasRegion = false;
+            wcsString = ' ';
+        }
+        if (wcsString == ' ') wcsString = imageType == ImageType.FOCAL_PLANE ? 'E' : 'Q';
         
         // Note, graphics and source region being flipped in Y to comply with Camera visualization standards
         if (sourceRegion == null) {
