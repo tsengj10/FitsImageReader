@@ -17,6 +17,7 @@ import javax.imageio.stream.ImageInputStream;
 import nom.tam.fits.FitsFactory;
 import org.lsst.fits.imageio.bias.BiasCorrection;
 import org.lsst.fits.imageio.bias.NullBiasCorrection;
+import org.lsst.fits.imageio.bias.SerialParallelBiasCorrection;
 import org.lsst.fits.imageio.cmap.RGBColorMap;
 import org.lsst.fits.imageio.cmap.SAOColorMap;
 
@@ -52,7 +53,9 @@ public class CameraImageReader extends ImageReader {
 
     @Override
     public FITSImageReadParam getDefaultReadParam() {
-        return new FITSImageReadParam();
+        final FITSImageReadParam fitsImageReadParam = new FITSImageReadParam();
+        fitsImageReadParam.setBiasCorrection(new SerialParallelBiasCorrection());
+        return fitsImageReadParam;
     }
 
     @Override
