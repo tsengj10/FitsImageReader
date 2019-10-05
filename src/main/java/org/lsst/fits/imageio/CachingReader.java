@@ -61,7 +61,7 @@ public class CachingReader {
                 .build((File file) -> new BufferedFile(file, "r"));
 
         segmentCache = Caffeine.newBuilder()
-                .maximumSize(10_000)
+                .maximumSize(Integer.getInteger("org.lsst.fits.imageio.segmentCacheSize", 10_000))
                 .buildAsync((MultiKey<File, Character> key) -> {
                     return Timed.execute(() -> {
                         BufferedFile bf = openFileCache.get(key.getKey1());
@@ -70,7 +70,7 @@ public class CachingReader {
                 });
 
         rawDataCache = Caffeine.newBuilder()
-                .maximumSize(10_000)
+                .maximumSize(Integer.getInteger("org.lsst.fits.imageio.rawDataCacheSize", 1_000))
                 .buildAsync((Segment segment) -> {
                     return Timed.execute(() -> {
                         BufferedFile bf = openFileCache.get(segment.getFile());
@@ -79,7 +79,7 @@ public class CachingReader {
                 });
 
         bufferedImageCache = Caffeine.newBuilder()
-                .maximumSize(10_000)
+                .maximumSize(Integer.getInteger("org.lsst.fits.imageio.bufferedImageCacheSize", 10_000))
                 .buildAsync((MultiKey<RawData, BiasCorrection> key) -> {
                     return Timed.execute(() -> {
                         return createBufferedImage(key.getKey1(), key.getKey2());
@@ -87,7 +87,7 @@ public class CachingReader {
                 });
 
         linesCache = Caffeine.newBuilder()
-                .maximumSize(10_000)
+                .maximumSize(Integer.getInteger("org.lsst.fits.imageio.linesCacheSize", 10_000))
                 .build((ImageInputStream in) -> {
                     return Timed.execute(() -> {
                         List<String> lines = new ArrayList<>();
