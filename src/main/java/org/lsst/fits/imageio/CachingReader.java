@@ -17,6 +17,8 @@ import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -62,6 +64,7 @@ public class CachingReader {
 
         segmentCache = Caffeine.newBuilder()
                 .maximumSize(Integer.getInteger("org.lsst.fits.imageio.segmentCacheSize", 10_000))
+                .recordStats()
                 .buildAsync((MultiKey<File, Character> key) -> {
                     return Timed.execute(() -> {
                         BufferedFile bf = openFileCache.get(key.getKey1());
@@ -71,6 +74,7 @@ public class CachingReader {
 
         rawDataCache = Caffeine.newBuilder()
                 .maximumSize(Integer.getInteger("org.lsst.fits.imageio.rawDataCacheSize", 1_000))
+                .recordStats()
                 .buildAsync((Segment segment) -> {
                     return Timed.execute(() -> {
                         BufferedFile bf = openFileCache.get(segment.getFile());
@@ -80,6 +84,7 @@ public class CachingReader {
 
         bufferedImageCache = Caffeine.newBuilder()
                 .maximumSize(Integer.getInteger("org.lsst.fits.imageio.bufferedImageCacheSize", 10_000))
+                .recordStats()
                 .buildAsync((MultiKey<RawData, BiasCorrection> key) -> {
                     return Timed.execute(() -> {
                         return createBufferedImage(key.getKey1(), key.getKey2());
@@ -102,9 +107,25 @@ public class CachingReader {
                         return lines;
                     }, "Read lines in %dms");
                 });
-
+        // Report stats every minute
+        Timer timer = new Timer();
+        timer.schedule(new TimerTask(){
+            @Override
+            public void run() {
+                report();
+            }
+        }, 60_000, 60_000);
     }
 
+    void report() {
+        LoadingCache<MultiKey<File, Character>, List<Segment>> s1 = segmentCache.synchronous();
+        LOG.log(Level.INFO, "segment Cache size {0} stats {1}", new Object[]{s1.estimatedSize(), s1.stats()});
+        LoadingCache<Segment, RawData> s2 = rawDataCache.synchronous();
+        LOG.log(Level.INFO, "rawData Cache size {0} stats {1}", new Object[]{s2.estimatedSize(), s2.stats()});
+        LoadingCache<MultiKey<RawData, BiasCorrection>, BufferedImage> s3 = bufferedImageCache.synchronous();
+        LOG.log(Level.INFO, "bufferedImage Cache size {0} stats {1}", new Object[]{s3.estimatedSize(), s3.stats()});
+    }
+    
     int preReadImage(ImageInputStream fileInput) {
         List<String> lines = linesCache.get(fileInput);
         return lines == null ? 0 : lines.size();
