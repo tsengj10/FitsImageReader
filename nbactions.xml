@@ -10,7 +10,7 @@
                 <goal>org.codehaus.mojo:exec-maven-plugin:1.5.0:exec</goal>
             </goals>
             <properties>
-                <exec.args>-Dsun.java2d.trace=count -Xmx16g -classpath %classpath org.lsst.fits.imageio.test.Main /home/tonyj/Data/pretty/R22.raft</exec.args>
+                <exec.args>-Dsun.java2d.trace=count -Xmx24g -classpath %classpath org.lsst.fits.imageio.test.Main /home/tonyj/Data/pretty/R22.raft</exec.args>
                 <exec.executable>java</exec.executable>
             </properties>
         </action>
@@ -24,7 +24,7 @@
                 <goal>org.codehaus.mojo:exec-maven-plugin:1.5.0:exec</goal>
             </goals>
             <properties>
-                <exec.args>-agentlib:jdwp=transport=dt_socket,server=n,address=${jpda.address} -Dsun.java2d.trace=count -Xmx16g -classpath %classpath org.lsst.fits.imageio.test.Main /home/tonyj/Data/pretty/R22.raft</exec.args>
+                <exec.args>-agentlib:jdwp=transport=dt_socket,server=n,address=${jpda.address} -Dsun.java2d.trace=count -Xmx24g -classpath %classpath org.lsst.fits.imageio.test.Main /home/tonyj/Data/pretty/R22.raft</exec.args>
                 <exec.executable>java</exec.executable>
                 <jpda.listen>true</jpda.listen>
             </properties>
@@ -39,8 +39,23 @@
                 <goal>org.codehaus.mojo:exec-maven-plugin:1.5.0:exec</goal>
             </goals>
             <properties>
-                <exec.args>-Dsun.java2d.trace=count -Xmx16g -classpath %classpath org.lsst.fits.imageio.test.Main /home/tonyj/Data/pretty/R22.raft</exec.args>
+                <exec.args>-Dsun.java2d.trace=count -Xmx24g -classpath %classpath org.lsst.fits.imageio.test.Main /home/tonyj/Data/pretty/R22.raft</exec.args>
                 <exec.executable>java</exec.executable>
+            </properties>
+        </action>
+        <action>
+            <actionName>run.single.main</actionName>
+            <packagings>
+                <packaging>*</packaging>
+            </packagings>
+            <goals>
+                <goal>process-classes</goal>
+                <goal>org.codehaus.mojo:exec-maven-plugin:1.5.0:exec</goal>
+            </goals>
+            <properties>
+                <exec.args>-Xmx16g -classpath %classpath ${packageClassName}</exec.args>
+                <exec.executable>java</exec.executable>
+                <exec.classpathScope>${classPathScope}</exec.classpathScope>
             </properties>
         </action>
     </actions>

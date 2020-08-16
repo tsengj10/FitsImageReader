@@ -3,7 +3,6 @@ package org.lsst.fits.imageio.bias;
 import java.awt.Rectangle;
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Arrays;
 import nom.tam.fits.FitsException;
@@ -67,6 +66,16 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
         return new SimpleCorrectionFactors(datasec, serialBias, parallelBias);
     }
 
+    @Override
+    public boolean equals(Object obj) {
+        return obj != null && SerialParallelBiasCorrection.class.equals(obj.getClass());
+    }
+
+    @Override
+    public int hashCode() {
+        return SerialParallelBiasCorrection.class.hashCode();
+    }
+
     public static void main(String[] args) throws IOException, TruncatedFileException, FitsException {
         File file = new File("/home/tonyj/Data/MC_C_20190413_000237/MC_C_20190413_000237_R22_S11.fits");
         BufferedFile bf = new BufferedFile(file, "r");
@@ -75,7 +84,7 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
         header = new Header(bf);
 
         Segment segment = new Segment(header, file, bf, "S11", 'Q');
-        IntBuffer intBuffer = segment.readData();
+        IntBuffer intBuffer = segment.readData(bf);
 
         BiasCorrection bc = new SerialParallelBiasCorrection();
         CorrectionFactors factors = bc.compute(intBuffer, segment);

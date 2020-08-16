@@ -223,6 +223,7 @@ public class CachingReader {
             Header header = new Header(bf);
             if (i == 0) {
                 ccdSlot = header.getStringValue("CCDSLOT");
+                if (ccdSlot == null) ccdSlot = header.getStringValue("SENSNAME");
                 if (ccdSlot.startsWith("SW")) nSegments = 8;
             }
             if (i > 0) {
@@ -234,7 +235,7 @@ public class CachingReader {
     }
 
     private static RawData readRawData(Segment segment, BufferedFile bf) throws IOException, FitsException {
-        IntBuffer ib = segment.readData();
+        IntBuffer ib = segment.readData(bf);
         return new RawData(segment, ib);
     }
 

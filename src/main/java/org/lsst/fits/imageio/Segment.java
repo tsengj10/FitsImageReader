@@ -49,14 +49,12 @@ public class Segment {
     private double pc1_2;
     private double pc2_1;
     private final char wcsLetter;
-    private final BufferedFile bf;
     private final int rawDataLength;
     private final boolean isCompressed;
     private final BasicHDU<?> compressedImageHDU;
 
     public Segment(Header header, File file, BufferedFile bf, String ccdSlot, char wcsLetter) throws IOException, FitsException {
         this.file = file;
-        this.bf = bf;
         this.seekPosition = bf.getFilePointer();
         this.wcsLetter = wcsLetter;
         isCompressed = header.getBooleanValue("ZIMAGE");
@@ -128,9 +126,10 @@ public class Segment {
         return file;
     }
 
-    public IntBuffer readData() throws IOException, FitsException {
+    public IntBuffer readData(BufferedFile bf) throws IOException, FitsException {
         if (isCompressed) {
             synchronized (bf) {
+                // FIXME: This internally uses the bf passed in to the constructor, which may have been closed by now
                 return (IntBuffer) ((CompressedImageHDU) compressedImageHDU).getUncompressedData();
             }
         } else {

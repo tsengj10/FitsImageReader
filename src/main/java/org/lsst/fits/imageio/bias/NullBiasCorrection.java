@@ -14,5 +14,15 @@ public class NullBiasCorrection implements BiasCorrection {
     public CorrectionFactors compute(IntBuffer data, Segment segment) {
         return NOOP_CORRECTION;
     }
-    
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj != null && NullBiasCorrection.class.equals(obj.getClass());
+    }
+
+    @Override
+    public int hashCode() {
+        return NullBiasCorrection.class.hashCode();
+    }
+
 }
