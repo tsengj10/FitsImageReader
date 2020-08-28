@@ -126,17 +126,20 @@ public class CameraImageReader extends ImageReader {
         BiasCorrection bc;
         char wcsString;
         Rectangle sourceRegion = param == null ? null : param.getSourceRegion();
+        long[] globalScale;
         if (param instanceof FITSImageReadParam) {
             FITSImageReadParam fitsParam = (FITSImageReadParam) param;
             cmap = fitsParam.getColorMap();
             bc = fitsParam.getBiasCorrection();
             showBiasRegion = fitsParam.isShowBiasRegions();
             wcsString = fitsParam.getWCSString();
+            globalScale = fitsParam.getGlobalScale();
         } else {
             cmap = DEFAULT_COLOR_MAP;
             bc = DEFAULT_BIAS_CORRECTION;
             showBiasRegion = false;
             wcsString = ' ';
+            globalScale = null;
         }
         if (wcsString == ' ') wcsString = imageType == ImageType.FOCAL_PLANE ? 'E' : 'Q';
         
@@ -148,14 +151,21 @@ public class CameraImageReader extends ImageReader {
             g.scale(1.0/xSubSampling,-1.0/ySubSampling);
         } else {
             sourceRegion = new Rectangle(sourceRegion.x, getHeight(0)-sourceRegion.y-sourceRegion.height, sourceRegion.width, sourceRegion.height);
-            result = IMAGE_TYPE.createBufferedImage((int) sourceRegion.getWidth(), (int) sourceRegion.getHeight());
+            result = IMAGE_TYPE.createBufferedImage((int) (sourceRegion.getWidth()/xSubSampling), (int) (sourceRegion.getHeight()/ySubSampling));
             g = result.createGraphics();
-            g.translate(0,sourceRegion.getHeight());
-            g.scale(1,-1);
+            g.translate(0,sourceRegion.getHeight()/ySubSampling);
+            g.scale(1.0/xSubSampling,-1.0/ySubSampling);
             g.translate(-sourceRegion.getX(), -sourceRegion.getY());
         }
         try {
-            READER.readImage((ImageInputStream) getInput(), sourceRegion, g, cmap, bc, showBiasRegion, wcsString);
+//            g.setRenderingHint(RenderingHints.KEY_RENDERING,
+//                    RenderingHints.VALUE_RENDER_QUALITY);
+//            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+//                    RenderingHints.VALUE_ANTIALIAS_ON);
+//            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+//                    RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+
+            READER.readImage((ImageInputStream) getInput(), sourceRegion, g, cmap, bc, showBiasRegion, wcsString, globalScale);
             return result;
         } finally {
             g.dispose();

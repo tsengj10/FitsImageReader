@@ -35,8 +35,7 @@ public class Main {
     private static final Logger LOG = Logger.getLogger(Main.class.getName());
 
     public static void main(String[] args) throws IOException, UnsupportedLookAndFeelException, ClassNotFoundException, InstantiationException, IllegalAccessException {
-         UIManager.setLookAndFeel(
-            UIManager.getSystemLookAndFeelClassName());
+        UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
         Main main = new Main();
         main.start(args[0]);
     }
@@ -64,7 +63,7 @@ public class Main {
         });
 
     }
-    
+
     private BufferedImage open(File file) throws IOException {
         int pos_suffix = file.getName().lastIndexOf('.');
         String suffix = file.getName().substring(pos_suffix);
@@ -88,21 +87,23 @@ public class Main {
         JMenuItem open = new JMenuItem("Open...");
         open.addActionListener((ActionEvent event) -> {
             JFileChooser chooser = new JFileChooser();
-            chooser.setFileFilter(new FileFilter(){
+            chooser.setFileFilter(new FileFilter() {
                 @Override
                 public String getDescription() {
                     return "Raft file (.raft)";
                 }
+
                 @Override
                 public boolean accept(File file) {
                     return file.isDirectory() || file.getName().endsWith(".raft");
                 }
             });
-            chooser.setFileFilter(new FileFilter(){
+            chooser.setFileFilter(new FileFilter() {
                 @Override
                 public String getDescription() {
                     return "Focal Plane file (.fp)";
                 }
+
                 @Override
                 public boolean accept(File file) {
                     return file.isDirectory() || file.getName().endsWith(".fp");
@@ -115,14 +116,14 @@ public class Main {
                     bi = open(chooser.getSelectedFile());
                     ic.setImage(bi);
                 } catch (IOException ex) {
-                    LOG.log(Level.SEVERE,"Unable to open file", ex);
+                    LOG.log(Level.SEVERE, "Unable to open file", ex);
                 }
             }
         });
         fileMenu.add(open);
         return fileMenu;
     }
-    
+
     private JMenu createBiasMenu() {
         JMenu biasMenu = new JMenu("Bias");
         ButtonGroup group = new ButtonGroup();

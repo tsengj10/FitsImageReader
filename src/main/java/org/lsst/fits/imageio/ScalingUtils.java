@@ -19,6 +19,14 @@ class ScalingUtils<T> {
         this.counts = counts;
         computeMinMax();
     }
+    
+    ScalingUtils(long[] counts) {
+        this.counts = new int[counts.length];
+        for (int i=0; i<counts.length; i++) {
+            this.counts[i] = (int) (counts[i]/512); 
+        }
+        computeMinMax();
+    }
 
     private void computeMinMax() {
         for (int i = 0; i < counts.length; i++) {

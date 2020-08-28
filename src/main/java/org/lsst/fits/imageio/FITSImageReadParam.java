@@ -36,6 +36,7 @@ public class FITSImageReadParam extends ImageReadParam {
                 }
             });
     private char wcsString = ' ';
+    private long[] globalScale;
     
     public boolean isShowBiasRegions() {
         return showBiasRegions;
@@ -93,6 +94,14 @@ public class FITSImageReadParam extends ImageReadParam {
     public String getBiasCorrectionName() {
         return bc.getValueName();
     }
+
+    public long[] getGlobalScale() {
+        return globalScale;
+    }
+
+    public void setGlobalScale(long[] globalScale) {
+        this.globalScale = globalScale;
+    }    
 
     private static class GetSetAvailable<T> {
 
