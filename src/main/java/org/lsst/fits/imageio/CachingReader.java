@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -42,7 +43,7 @@ import org.lsst.fits.imageio.cmap.RGBColorMap;
  */
 public class CachingReader {
 
-    private final AsyncLoadingCache<MultiKey<File, Character>, List<Segment>> segmentCache;
+    private final AsyncLoadingCache<MultiKey3<File, Character, Map<String, Map<String, Object>>>, List<Segment>> segmentCache;
     private final LoadingCache<File, BufferedFile> openFileCache;
     private final AsyncLoadingCache<Segment, RawData> rawDataCache;
     private final AsyncLoadingCache<MultiKey3<Segment, BiasCorrection, long[]>, BufferedImage> bufferedImageCache;
@@ -65,10 +66,10 @@ public class CachingReader {
         segmentCache = Caffeine.newBuilder()
                 .maximumSize(Integer.getInteger("org.lsst.fits.imageio.segmentCacheSize", 10_000))
                 .recordStats()
-                .buildAsync((MultiKey<File, Character> key) -> {
+                .buildAsync((MultiKey3<File, Character, Map<String, Map<String, Object>>> key) -> {
                     return Timed.execute(() -> {
                         BufferedFile bf = openFileCache.get(key.getKey1());
-                        return readSegments(key.getKey1(), bf, key.getKey2());
+                        return readSegments(key.getKey1(), bf, key.getKey2(), key.getKey3());
                     }, "Loading %s took %dms", key.getKey1());
                 });
 
@@ -111,7 +112,7 @@ public class CachingReader {
                     }, "Read lines in %dms");
                 });
         // Report stats every minute
-        Timer timer = new Timer();
+        Timer timer = new Timer(true);
         timer.schedule(new TimerTask() {
             @Override
             public void run() {
@@ -121,7 +122,7 @@ public class CachingReader {
     }
 
     void report() {
-        LoadingCache<MultiKey<File, Character>, List<Segment>> s1 = segmentCache.synchronous();
+        LoadingCache<MultiKey3<File, Character, Map<String, Map<String, Object>>>, List<Segment>> s1 = segmentCache.synchronous();
         LOG.log(Level.INFO, "segment Cache size {0} stats {1}", new Object[]{s1.estimatedSize(), s1.stats()});
         LoadingCache<Segment, RawData> s2 = rawDataCache.synchronous();
         LOG.log(Level.INFO, "rawData Cache size {0} stats {1}", new Object[]{s2.estimatedSize(), s2.stats()});
@@ -135,14 +136,14 @@ public class CachingReader {
     }
 
     @SuppressWarnings("null")
-    void readImage(ImageInputStream fileInput, Rectangle sourceRegion, Graphics2D g, RGBColorMap cmap, BiasCorrection bc, boolean showBiasRegion, char wcsLetter, long[] globalScale) throws IOException {
+    void readImage(ImageInputStream fileInput, Rectangle sourceRegion, Graphics2D g, RGBColorMap cmap, BiasCorrection bc, boolean showBiasRegion, char wcsLetter, long[] globalScale, Map<String, Map<String, Object>> wcsOverride) throws IOException {
 
         try {
             Queue<CompletableFuture> l1 = new ConcurrentLinkedQueue<>();
             Queue<CompletableFuture> l2 = new ConcurrentLinkedQueue<>();
             Queue<CompletableFuture> l3 = new ConcurrentLinkedQueue<>();
             List<String> lines = linesCache.get(fileInput);
-            lines.stream().map((line) -> segmentCache.get(new MultiKey(new File(line), wcsLetter))).forEach(new Consumer<CompletableFuture>() {
+            lines.stream().map((line) -> segmentCache.get(new MultiKey3(new File(line), wcsLetter, wcsOverride))).forEach(new Consumer<CompletableFuture>() {
                 @Override
                 public void accept(CompletableFuture futureSegments) {
                     l1.add(futureSegments.thenAccept(new Consumer<List<Segment>>() {
@@ -213,13 +214,15 @@ public class CachingReader {
         }
     }
 
-    private static List<Segment> readSegments(File file, BufferedFile bf, char wcsLetter) throws IOException, TruncatedFileException, FitsException {
+    private static List<Segment> readSegments(File file, BufferedFile bf, char wcsLetter, Map<String, Map<String, Object>> wcsOverride) throws IOException, TruncatedFileException, FitsException {
         List<Segment> result = new ArrayList<>();
         String ccdSlot = null;
+        String raftSlot = null;
         int nSegments = 16;
         for (int i = 0; i < nSegments + 1; i++) {
             Header header = new Header(bf);
             if (i == 0) {
+                raftSlot = header.getStringValue("RAFTBAY");
                 ccdSlot = header.getStringValue("CCDSLOT");
                 if (ccdSlot == null) {
                     ccdSlot = header.getStringValue("SENSNAME");
@@ -229,7 +232,10 @@ public class CachingReader {
                 }
             }
             if (i > 0) {
-                Segment segment = new Segment(header, file, bf, ccdSlot, wcsLetter);
+                String extName = header.getStringValue("EXTNAME");
+                String wcsKey= String.format("%s/%s/%s", raftSlot, ccdSlot, extName.substring(7,9));
+                System.out.printf("Looking for wcs %s found %s\n", wcsKey, wcsOverride.get(wcsKey));
+                Segment segment = new Segment(header, file, bf, ccdSlot, wcsLetter, wcsOverride == null ? null : wcsOverride.get(wcsKey));
                 result.add(segment);
             }
         }
@@ -291,7 +297,7 @@ public class CachingReader {
         List<Segment> result = new ArrayList<>();
         List<String> lines = linesCache.get(in);
         for (String line : lines) {
-            result.addAll((List<Segment>) (segmentCache.get(new MultiKey(new File(line), 'E')).get()));
+            result.addAll((List<Segment>) (segmentCache.get(new MultiKey3(new File(line), 'E', null)).get()));
         }
         return result;
     }

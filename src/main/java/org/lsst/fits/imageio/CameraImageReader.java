@@ -6,6 +6,7 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.imageio.ImageReadParam;
@@ -124,6 +125,7 @@ public class CameraImageReader extends ImageReader {
         Graphics2D g;
         RGBColorMap cmap;
         BiasCorrection bc;
+        Map<String, Map<String, Object>> wcsOverride = null;
         char wcsString;
         Rectangle sourceRegion = param == null ? null : param.getSourceRegion();
         long[] globalScale;
@@ -134,6 +136,7 @@ public class CameraImageReader extends ImageReader {
             showBiasRegion = fitsParam.isShowBiasRegions();
             wcsString = fitsParam.getWCSString();
             globalScale = fitsParam.getGlobalScale();
+            wcsOverride = fitsParam.getWCSOverride();
         } else {
             cmap = DEFAULT_COLOR_MAP;
             bc = DEFAULT_BIAS_CORRECTION;
@@ -157,6 +160,7 @@ public class CameraImageReader extends ImageReader {
             g.scale(1.0/xSubSampling,-1.0/ySubSampling);
             g.translate(-sourceRegion.getX(), -sourceRegion.getY());
         }
+        java.awt.image.ColorConvertOp conerter;
         try {
 //            g.setRenderingHint(RenderingHints.KEY_RENDERING,
 //                    RenderingHints.VALUE_RENDER_QUALITY);
@@ -165,7 +169,7 @@ public class CameraImageReader extends ImageReader {
 //            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
 //                    RenderingHints.VALUE_INTERPOLATION_BICUBIC);
 
-            READER.readImage((ImageInputStream) getInput(), sourceRegion, g, cmap, bc, showBiasRegion, wcsString, globalScale);
+            READER.readImage((ImageInputStream) getInput(), sourceRegion, g, cmap, bc, showBiasRegion, wcsString, globalScale, wcsOverride);
             return result;
         } finally {
             g.dispose();

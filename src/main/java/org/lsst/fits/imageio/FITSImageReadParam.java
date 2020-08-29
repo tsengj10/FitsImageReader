@@ -37,6 +37,7 @@ public class FITSImageReadParam extends ImageReadParam {
             });
     private char wcsString = ' ';
     private long[] globalScale;
+    private Map<String, Map<String, Object>> wcsOverride = null;
     
     public boolean isShowBiasRegions() {
         return showBiasRegions;
@@ -102,6 +103,14 @@ public class FITSImageReadParam extends ImageReadParam {
     public void setGlobalScale(long[] globalScale) {
         this.globalScale = globalScale;
     }    
+
+    public Map<String, Map<String, Object>> getWCSOverride() {
+        return wcsOverride;
+    }
+
+    public void setWCSOverride(Map<String, Map<String, Object>> wcsOverride) {
+        this.wcsOverride = wcsOverride;
+    }
 
     private static class GetSetAvailable<T> {
 

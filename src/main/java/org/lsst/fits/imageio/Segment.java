@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.channels.FileChannel;
+import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -43,7 +44,6 @@ public class Segment {
     private double crval2;
     private double pc1_1;
     private double pc2_2;
-    private int channel;
 //    private int ccdX;
 //    private int ccdY;
     private double pc1_2;
@@ -53,7 +53,7 @@ public class Segment {
     private final boolean isCompressed;
     private final BasicHDU<?> compressedImageHDU;
 
-    public Segment(Header header, File file, BufferedFile bf, String ccdSlot, char wcsLetter) throws IOException, FitsException {
+    public Segment(Header header, File file, BufferedFile bf, String ccdSlot, char wcsLetter, Map<String, Object> wcsOverride) throws IOException, FitsException {
         this.file = file;
         this.seekPosition = bf.getFilePointer();
         this.wcsLetter = wcsLetter;
@@ -74,27 +74,29 @@ public class Segment {
             bf.skip(rawDataLength + pad);
             compressedImageHDU = null;
         }
-        String datasetString = header.getStringValue("DATASEC");
-        if (datasetString == null) {
-            throw new IOException("Missing datasec for file: " + file);
+        if (wcsOverride!= null) {
+            String datasecString = wcsOverride.get("DATASEC").toString();
+            datasec = computeDatasec(datasecString);
+            pc1_1 = ((Number) wcsOverride.get("PC1_1" + wcsLetter)).doubleValue();
+            pc2_2 = ((Number) wcsOverride.get("PC2_2" + wcsLetter)).doubleValue();
+            pc1_2 = ((Number) wcsOverride.get("PC1_2" + wcsLetter)).doubleValue();
+            pc2_1 = ((Number) wcsOverride.get("PC2_1" + wcsLetter)).doubleValue();
+            crval1 = ((Number) wcsOverride.get("CRVAL1" + wcsLetter)).doubleValue();
+            crval2 = ((Number) wcsOverride.get("CRVAL2" + wcsLetter)).doubleValue();            
+        } else {
+            String datasecString = header.getStringValue("DATASEC");
+            if (datasecString == null) {
+                throw new IOException("Missing datasec for file: " + file);
+            }
+            datasec = computeDatasec(datasecString);
+            // Hard wired to use WCSQ coordinates (raft level coordinates)
+            pc1_1 = header.getDoubleValue("PC1_1" + wcsLetter);
+            pc2_2 = header.getDoubleValue("PC2_2" + wcsLetter);
+            pc1_2 = header.getDoubleValue("PC1_2" + wcsLetter);
+            pc2_1 = header.getDoubleValue("PC2_1" + wcsLetter);
+            crval1 = header.getDoubleValue("CRVAL1" + wcsLetter);
+            crval2 = header.getDoubleValue("CRVAL2" + wcsLetter);
         }
-        Matcher matcher = DATASET_PATTERN.matcher(datasetString);
-        if (!matcher.matches()) {
-            throw new IOException("Invalid datasec: " + datasetString);
-        }
-        int datasec1 = Integer.parseInt(matcher.group(1)) - 1;
-        int datasec2 = Integer.parseInt(matcher.group(2));
-        int datasec3 = Integer.parseInt(matcher.group(3)) - 1;
-        int datasec4 = Integer.parseInt(matcher.group(4));
-        datasec = new Rectangle(datasec1, datasec3, datasec2 - datasec1, datasec4 - datasec3);
-        // Hard wired to use WCSQ coordinates (raft level coordinates)
-        pc1_1 = header.getDoubleValue("PC1_1" + wcsLetter);
-        pc2_2 = header.getDoubleValue("PC2_2" + wcsLetter);
-        pc1_2 = header.getDoubleValue("PC1_2" + wcsLetter);
-        pc2_1 = header.getDoubleValue("PC2_1" + wcsLetter);
-        crval1 = header.getDoubleValue("CRVAL1" + wcsLetter);
-        crval2 = header.getDoubleValue("CRVAL2" + wcsLetter);
-        channel = header.getIntValue("CHANNEL");
 //        ccdX = Integer.parseInt(ccdSlot.substring(1,2));
 //        ccdY = Integer.parseInt(ccdSlot.substring(2,3));
         wcsTranslation = new AffineTransform(pc1_1, pc2_1, pc1_2, pc2_2, crval1, crval2);
@@ -112,6 +114,18 @@ public class Segment {
         double height = Math.abs(origin.getY() - corner.getY());
         wcs = new Rectangle2D.Double(x, y, width, height);
         //System.out.printf("wcs=%s\n", wcs);
+    }
+
+    private Rectangle computeDatasec(String datasecString) throws IOException, NumberFormatException {
+        Matcher matcher = DATASET_PATTERN.matcher(datasecString);
+        if (!matcher.matches()) {
+            throw new IOException("Invalid datasec: " + datasecString);
+        }
+        int datasec1 = Integer.parseInt(matcher.group(1)) - 1;
+        int datasec2 = Integer.parseInt(matcher.group(2));
+        int datasec3 = Integer.parseInt(matcher.group(3)) - 1;
+        int datasec4 = Integer.parseInt(matcher.group(4));
+        return new Rectangle(datasec1, datasec3, datasec2 - datasec1, datasec4 - datasec3);
     }
 
     public int getImageSize() {
