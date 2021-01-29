@@ -219,24 +219,29 @@ public class CachingReader {
         String ccdSlot = null;
         String raftSlot = null;
         int nSegments = 16;
-        for (int i = 0; i < nSegments + 1; i++) {
-            Header header = new Header(bf);
-            if (i == 0) {
-                raftSlot = header.getStringValue("RAFTBAY");
-                ccdSlot = header.getStringValue("CCDSLOT");
-                if (ccdSlot == null) {
-                    ccdSlot = header.getStringValue("SENSNAME");
+        synchronized (bf) {
+            bf.seek(0);
+            for (int i = 0; i < nSegments + 1; i++) {
+                Header header = new Header(bf);
+                if (i == 0) {
+                    raftSlot = header.getStringValue("RAFTBAY");
+                    ccdSlot = header.getStringValue("CCDSLOT");
+                    if (ccdSlot == null) {
+                        ccdSlot = header.getStringValue("SENSNAME");
+                    }
+                    if (ccdSlot == null) {
+                        throw new IOException("Missing CCDSLOT while reading " + file);
+                    }
+                    if (ccdSlot.startsWith("SW")) {
+                        nSegments = 8;
+                    }
                 }
-                if (ccdSlot.startsWith("SW")) {
-                    nSegments = 8;
+                if (i > 0) {
+                    String extName = header.getStringValue("EXTNAME");
+                    String wcsKey = String.format("%s/%s/%s", raftSlot, ccdSlot, extName.substring(7, 9));
+                    Segment segment = new Segment(header, file, bf, ccdSlot, wcsLetter, wcsOverride == null ? null : wcsOverride.get(wcsKey));
+                    result.add(segment);
                 }
-            }
-            if (i > 0) {
-                String extName = header.getStringValue("EXTNAME");
-                String wcsKey= String.format("%s/%s/%s", raftSlot, ccdSlot, extName.substring(7,9));
-                System.out.printf("Looking for wcs %s found %s\n", wcsKey, wcsOverride.get(wcsKey));
-                Segment segment = new Segment(header, file, bf, ccdSlot, wcsLetter, wcsOverride == null ? null : wcsOverride.get(wcsKey));
-                result.add(segment);
             }
         }
         return result;
@@ -268,7 +273,7 @@ public class CachingReader {
         }
         final int max = su.getMax();
         int[] cdf = su.computeCDF();
-        int range = (int) cdf[max];
+        int range = cdf[max];
 
         // Scale data 
         BufferedImage image = CameraImageReader.IMAGE_TYPE.createBufferedImage(segment.getNAxis1(), segment.getNAxis2());
@@ -297,7 +302,7 @@ public class CachingReader {
         List<Segment> result = new ArrayList<>();
         List<String> lines = linesCache.get(in);
         for (String line : lines) {
-            result.addAll((List<Segment>) (segmentCache.get(new MultiKey3(new File(line), 'E', null)).get()));
+            result.addAll((List<Segment>) (segmentCache.get(new MultiKey3(new File(line), 'Q', null)).get()));
         }
         return result;
     }

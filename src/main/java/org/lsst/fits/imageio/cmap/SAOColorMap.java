@@ -86,9 +86,9 @@ public class SAOColorMap extends RGBColorMap {
         int[] rgb = new int[size];
         for (int i = 0; i < size; i++) {
             float f = i / (size - 1.0f);
-            rgb[i] = (int) Math.round((size - 1) * cmap.get(Color.RED).get(f)) << 16
-                    | (int) Math.round((size - 1) * cmap.get(Color.GREEN).get(f)) << 8
-                    | (int) Math.round((size - 1) * cmap.get(Color.BLUE).get(f));
+            rgb[i] = (int) Math.round(255 * cmap.get(Color.RED).get(f)) << 16
+                    | (int) Math.round(255 * cmap.get(Color.GREEN).get(f)) << 8
+                    | (int) Math.round(255 * cmap.get(Color.BLUE).get(f));
         }
         return rgb;
     }

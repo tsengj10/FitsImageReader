@@ -1,2 +1,3 @@
 org.lsst.fits.imageio.CameraRaftImageReaderSpi
 org.lsst.fits.imageio.CameraFocalPlaneImageReaderSpi
+org.lsst.fits.imageio.CameraCcdImageReaderSpi

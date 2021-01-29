@@ -7,7 +7,7 @@ import java.util.logging.Logger;
  * @author tonyj
  * @param <T>
  */
-class ScalingUtils<T> {
+public class ScalingUtils<T> {
 
     private static final Logger LOG = Logger.getLogger(ScalingUtils.class.getName());
 
@@ -15,7 +15,7 @@ class ScalingUtils<T> {
     private int min;
     private int max;
 
-    ScalingUtils(int[] counts) {
+    public ScalingUtils(int[] counts) {
         this.counts = counts;
         computeMinMax();
     }
@@ -44,7 +44,7 @@ class ScalingUtils<T> {
         LOG.fine(() -> String.format("min=%d max=%d", min, max));
     }
 
-    int[] computeCDF() {
+    public int[] computeCDF() {
         int[] cdf = new int[counts.length];
         int cum = 0;
         for (int i = min; i <= max; i++) {
@@ -54,11 +54,11 @@ class ScalingUtils<T> {
         return cdf;
     }
 
-    int getMax() {
+    public int getMax() {
         return max;
     }
 
-    int getMin() {
+    public int getMin() {
         return min;
     }
 }

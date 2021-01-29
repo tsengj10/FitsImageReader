@@ -77,7 +77,7 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
     }
 
     public static void main(String[] args) throws IOException, TruncatedFileException, FitsException {
-        File file = new File("/home/tonyj/Data/MC_C_20190413_000237/MC_C_20190413_000237_R22_S11.fits");
+        File file = new File("/home/tonyj/Data/pretty/11_Flat_screen_0000_20190322172301.fits");
         BufferedFile bf = new BufferedFile(file, "r");
         @SuppressWarnings("UnusedAssignment")
         Header header = new Header(bf); // Skip primary header

@@ -35,8 +35,8 @@ public class Segment {
 
     private final File file;
     private final long seekPosition;
-    private Rectangle2D.Double wcs;
-    private AffineTransform wcsTranslation;
+    private final Rectangle2D.Double wcs;
+    private final AffineTransform wcsTranslation;
     private Rectangle datasec;
     private final int nAxis1;
     private final int nAxis2;
@@ -136,7 +136,7 @@ public class Segment {
         return rawDataLength;
     }
 
-    File getFile() {
+    public File getFile() {
         return file;
     }
 
@@ -157,7 +157,7 @@ public class Segment {
             return bb.asIntBuffer();
         }
     }
-
+    
     public int getNAxis1() {
         return nAxis1;
     }
@@ -166,7 +166,7 @@ public class Segment {
         return nAxis2;
     }
 
-    AffineTransform getWCSTranslation(boolean includeOverscan) {
+    public AffineTransform getWCSTranslation(boolean includeOverscan) {
         if (includeOverscan) {
 //            int parallel_overscan = nAxis2 - datasec.height;
 //            int serial_overscan = nAxis1 - datasec.width;

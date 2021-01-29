@@ -33,8 +33,9 @@ public class CameraImageReader extends ImageReader {
     public static final ImageTypeSpecifier IMAGE_TYPE = ImageTypeSpecifier.createFromBufferedImageType(BufferedImage.TYPE_INT_RGB);
     public static final RGBColorMap DEFAULT_COLOR_MAP = new SAOColorMap(256, "grey.sao");
     public static final BiasCorrection DEFAULT_BIAS_CORRECTION = new NullBiasCorrection();
+    private static final int IMAGE_OFFSET = 100;
     
-    public enum ImageType { FOCAL_PLANE, RAFT };
+    public enum ImageType { FOCAL_PLANE, RAFT, CCD };
 
     private boolean showBiasRegion;
     private ImageType imageType;
@@ -63,8 +64,7 @@ public class CameraImageReader extends ImageReader {
     public void setInput(Object input, boolean seekForwardOnly, boolean ignoreMetadata) {
         super.setInput(input, seekForwardOnly, ignoreMetadata);
         int lines = READER.preReadImage((ImageInputStream) input);
-        imageType = lines>9 ? ImageType.FOCAL_PLANE : ImageType.RAFT;
-        
+        imageType = lines>9 ? ImageType.FOCAL_PLANE : lines==1 ? ImageType.CCD : ImageType.RAFT;
     }
 
     @Override
@@ -74,19 +74,25 @@ public class CameraImageReader extends ImageReader {
 
     @Override
     public int getWidth(int imageIndex) throws IOException {
-        if (imageType == ImageType.RAFT) {
-            return 3 * 4096 + 4 * 100 + (showBiasRegion ? 1600 : 0);
-        } else {
-            return 15 * 4096 + 16 * 100;
+        switch (imageType) {
+            case CCD:
+                return 4096 + 2 * IMAGE_OFFSET + (showBiasRegion ? 1600 : 0);
+            case RAFT:
+                return 3 * 4096 + 4 * IMAGE_OFFSET + (showBiasRegion ? 1600 : 0);
+            default:
+                return 15 * 4096 + 16 * IMAGE_OFFSET;
         }
     }
 
     @Override
     public int getHeight(int imageIndex) throws IOException {
-        if (imageType == ImageType.RAFT) {
-            return 3 * 4096 + 4 * 100;
-        } else {
-            return 15 * 4096 + 16 * 100;            
+        switch (imageType) {
+            case CCD:
+                return 4096 + 2 * IMAGE_OFFSET + (showBiasRegion ? 1600 : 0);
+            case RAFT:
+                return 3 * 4096 + 4 * IMAGE_OFFSET + (showBiasRegion ? 1600 : 0);
+            default:
+                return 15 * 4096 + 16 * IMAGE_OFFSET;
         }
     }
 
@@ -144,7 +150,7 @@ public class CameraImageReader extends ImageReader {
             wcsString = ' ';
             globalScale = null;
         }
-        if (wcsString == ' ') wcsString = imageType == ImageType.FOCAL_PLANE ? 'E' : 'Q';
+        if (wcsString == ' ') wcsString = imageType == ImageType.FOCAL_PLANE ? 'E' : imageType == ImageType.RAFT ? 'Q' : 'B';
         
         // Note, graphics and source region being flipped in Y to comply with Camera visualization standards
         if (sourceRegion == null) {
@@ -160,15 +166,10 @@ public class CameraImageReader extends ImageReader {
             g.scale(1.0/xSubSampling,-1.0/ySubSampling);
             g.translate(-sourceRegion.getX(), -sourceRegion.getY());
         }
-        java.awt.image.ColorConvertOp conerter;
+        if (wcsString == 'B') {
+            g.translate(IMAGE_OFFSET, IMAGE_OFFSET);
+        }
         try {
-//            g.setRenderingHint(RenderingHints.KEY_RENDERING,
-//                    RenderingHints.VALUE_RENDER_QUALITY);
-//            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-//                    RenderingHints.VALUE_ANTIALIAS_ON);
-//            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-//                    RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-
             READER.readImage((ImageInputStream) getInput(), sourceRegion, g, cmap, bc, showBiasRegion, wcsString, globalScale, wcsOverride);
             return result;
         } finally {

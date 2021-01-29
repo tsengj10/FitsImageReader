@@ -109,6 +109,17 @@ public class Main {
                     return file.isDirectory() || file.getName().endsWith(".fp");
                 }
             });
+            chooser.setFileFilter(new FileFilter() {
+                @Override
+                public String getDescription() {
+                    return "CCD file (.ccd)";
+                }
+
+                @Override
+                public boolean accept(File file) {
+                    return file.isDirectory() || file.getName().endsWith(".ccd");
+                }
+            });
             int rc = chooser.showOpenDialog(ic);
             if (rc == JFileChooser.APPROVE_OPTION) {
                 BufferedImage bi;
