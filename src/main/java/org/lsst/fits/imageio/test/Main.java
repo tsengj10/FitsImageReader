@@ -1,6 +1,7 @@
 package org.lsst.fits.imageio.test;
 
 import java.awt.Dimension;
+import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -74,7 +75,7 @@ public class Main {
             readParam.setSourceSubsampling(8, 8, 0, 0);
             readParam.setWCSString('E');
         }
-        //readParam.setSourceRegion(new Rectangle(4000,4000,2000,2000));
+        //readParam.setSourceRegion(new Rectangle(1000,10,256,256));
         //readParam.setColorMap(new SAOColorMap(256, "cubehelix00.sao"));
         reader.setInput(ImageIO.createImageInputStream(file));
         BufferedImage image1 = reader.read(0, readParam);

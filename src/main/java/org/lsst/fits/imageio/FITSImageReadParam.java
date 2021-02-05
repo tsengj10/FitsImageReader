@@ -30,9 +30,14 @@ public class FITSImageReadParam extends ImageReadParam {
             = new GetSetAvailable<>(CameraImageReader.DEFAULT_COLOR_MAP, "Color Map",
                     new LinkedHashMap<String, RGBColorMap>() {
                 {
-                    put("Grey", new SAOColorMap(256, "grey.sao"));
-                    put("B", new SAOColorMap(256, "b.sao"));
-                    put("Cube Helix", new SAOColorMap(256, "cubehelix00.sao"));
+                    put("grey", new SAOColorMap(256, "grey.sao"));
+                    put("a", new SAOColorMap(256, "a.sao"));
+                    put("b", new SAOColorMap(256, "b.sao"));
+                    put("bb", new SAOColorMap(256, "bb.sao"));
+                    put("cubehelix0", new SAOColorMap(256, "cubehelix0.sao"));
+                    put("cubehelix1", new SAOColorMap(256, "cubehelix1.sao"));
+                    put("rainbow", new SAOColorMap(256, "rainbow.sao"));
+                    put("standard", new SAOColorMap(256, "standard.sao"));
                 }
             });
     private char wcsString = ' ';

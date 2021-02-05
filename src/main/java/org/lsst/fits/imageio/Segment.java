@@ -44,14 +44,15 @@ public class Segment {
     private double crval2;
     private double pc1_1;
     private double pc2_2;
-//    private int ccdX;
-//    private int ccdY;
     private double pc1_2;
     private double pc2_1;
     private final char wcsLetter;
     private final int rawDataLength;
     private final boolean isCompressed;
     private final BasicHDU<?> compressedImageHDU;
+    private final int ccdX;
+    private final int ccdY;
+    private int channel;
 
     public Segment(Header header, File file, BufferedFile bf, String ccdSlot, char wcsLetter, Map<String, Object> wcsOverride) throws IOException, FitsException {
         this.file = file;
@@ -60,8 +61,8 @@ public class Segment {
         isCompressed = header.getBooleanValue("ZIMAGE");
         if (isCompressed) {
             nAxis1 = header.getIntValue("ZNAXIS1");
-            nAxis2 = header.getIntValue("ZNAXIS2");   
-            rawDataLength = header.getIntValue(Standard.NAXIS1) * header.getIntValue(Standard.NAXIS2) +  header.getIntValue("PCOUNT");
+            nAxis2 = header.getIntValue("ZNAXIS2");
+            rawDataLength = header.getIntValue(Standard.NAXIS1) * header.getIntValue(Standard.NAXIS2) + header.getIntValue("PCOUNT");
             Data data = header.makeData();
             data.read(bf);
             compressedImageHDU = FitsFactory.hduFactory(header, data);
@@ -74,7 +75,7 @@ public class Segment {
             bf.skip(rawDataLength + pad);
             compressedImageHDU = null;
         }
-        if (wcsOverride!= null) {
+        if (wcsOverride != null) {
             String datasecString = wcsOverride.get("DATASEC").toString();
             datasec = computeDatasec(datasecString);
             pc1_1 = ((Number) wcsOverride.get("PC1_1" + wcsLetter)).doubleValue();
@@ -82,23 +83,24 @@ public class Segment {
             pc1_2 = ((Number) wcsOverride.get("PC1_2" + wcsLetter)).doubleValue();
             pc2_1 = ((Number) wcsOverride.get("PC2_1" + wcsLetter)).doubleValue();
             crval1 = ((Number) wcsOverride.get("CRVAL1" + wcsLetter)).doubleValue();
-            crval2 = ((Number) wcsOverride.get("CRVAL2" + wcsLetter)).doubleValue();            
+            crval2 = ((Number) wcsOverride.get("CRVAL2" + wcsLetter)).doubleValue();
+            channel = header.getIntValue("CHANNEL");
         } else {
             String datasecString = header.getStringValue("DATASEC");
             if (datasecString == null) {
                 throw new IOException("Missing datasec for file: " + file);
             }
             datasec = computeDatasec(datasecString);
-            // Hard wired to use WCSQ coordinates (raft level coordinates)
             pc1_1 = header.getDoubleValue("PC1_1" + wcsLetter);
             pc2_2 = header.getDoubleValue("PC2_2" + wcsLetter);
             pc1_2 = header.getDoubleValue("PC1_2" + wcsLetter);
             pc2_1 = header.getDoubleValue("PC2_1" + wcsLetter);
             crval1 = header.getDoubleValue("CRVAL1" + wcsLetter);
             crval2 = header.getDoubleValue("CRVAL2" + wcsLetter);
+            channel = header.getIntValue("CHANNEL");
         }
-//        ccdX = Integer.parseInt(ccdSlot.substring(1,2));
-//        ccdY = Integer.parseInt(ccdSlot.substring(2,3));
+        ccdX = Integer.parseInt(ccdSlot.substring(1, 2));
+        ccdY = Integer.parseInt(ccdSlot.substring(2, 3));
         wcsTranslation = new AffineTransform(pc1_1, pc2_1, pc1_2, pc2_2, crval1, crval2);
         wcsTranslation.translate(datasec.x + 0.5, datasec.y + 0.5);
         //wcsTranslation.translate(crval1, crval2);
@@ -106,7 +108,7 @@ public class Segment {
         //System.out.printf("FILE %s CCDSLOT %s\n", file, ccdSlot);
         //System.out.printf("pc1_1=%3.3g pc2_2=%3.3g pc1_2=%3.3g pc2_1=%3.3g\n", pc1_1, pc2_2, pc1_2, pc2_1);
         //System.out.printf("qcs=%s\n", wcsTranslation);
-        Point2D origin = wcsTranslation.transform(new Point(0,0), null);
+        Point2D origin = wcsTranslation.transform(new Point(0, 0), null);
         Point2D corner = wcsTranslation.transform(new Point(datasec.width, datasec.height), null);
         double x = Math.min(origin.getX(), corner.getX());
         double y = Math.min(origin.getY(), corner.getY());
@@ -131,7 +133,7 @@ public class Segment {
     public int getImageSize() {
         return nAxis1 * nAxis2 * 4;
     }
-    
+
     public int getDataSize() {
         return rawDataLength;
     }
@@ -157,7 +159,7 @@ public class Segment {
             return bb.asIntBuffer();
         }
     }
-    
+
     public int getNAxis1() {
         return nAxis1;
     }
@@ -168,12 +170,12 @@ public class Segment {
 
     public AffineTransform getWCSTranslation(boolean includeOverscan) {
         if (includeOverscan) {
-//            int parallel_overscan = nAxis2 - datasec.height;
-//            int serial_overscan = nAxis1 - datasec.width;
-//            AffineTransform wcsTranslation = new AffineTransform();
-//            int c = channel>8 ? 16 - channel : channel-1;
-//            wcsTranslation.translate(crval1 + ccdY*serial_overscan*8 + (c%8)*serial_overscan, crval2 - parallel_overscan*pc2_2);
-//            wcsTranslation.scale(pc1_1, pc2_2);
+            int parallel_overscan = nAxis2 - datasec.height;
+            int serial_overscan = nAxis1 - datasec.width;
+            AffineTransform wcsTranslation = new AffineTransform();
+            int c = channel > 8 ? 16 - channel : channel - 1;
+            wcsTranslation.translate(crval1 + ccdY * serial_overscan * 8 + (c % 8) * serial_overscan, crval2 - parallel_overscan * pc2_2);
+            wcsTranslation.scale(pc1_1, pc2_2);
             return wcsTranslation;
         } else {
             return wcsTranslation;

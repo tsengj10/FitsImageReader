@@ -76,7 +76,7 @@ public class CameraImageReader extends ImageReader {
     public int getWidth(int imageIndex) throws IOException {
         switch (imageType) {
             case CCD:
-                return 4096 + 2 * IMAGE_OFFSET + (showBiasRegion ? 1600 : 0);
+                return 509*8  + (showBiasRegion ? 1600 : 0);
             case RAFT:
                 return 3 * 4096 + 4 * IMAGE_OFFSET + (showBiasRegion ? 1600 : 0);
             default:
@@ -88,7 +88,7 @@ public class CameraImageReader extends ImageReader {
     public int getHeight(int imageIndex) throws IOException {
         switch (imageType) {
             case CCD:
-                return 4096 + 2 * IMAGE_OFFSET + (showBiasRegion ? 1600 : 0);
+                return 4000 + (showBiasRegion ? 1600 : 0);
             case RAFT:
                 return 3 * 4096 + 4 * IMAGE_OFFSET + (showBiasRegion ? 1600 : 0);
             default:
@@ -165,9 +165,6 @@ public class CameraImageReader extends ImageReader {
             g.translate(0,sourceRegion.getHeight()/ySubSampling);
             g.scale(1.0/xSubSampling,-1.0/ySubSampling);
             g.translate(-sourceRegion.getX(), -sourceRegion.getY());
-        }
-        if (wcsString == 'B') {
-            g.translate(IMAGE_OFFSET, IMAGE_OFFSET);
         }
         try {
             READER.readImage((ImageInputStream) getInput(), sourceRegion, g, cmap, bc, showBiasRegion, wcsString, globalScale, wcsOverride);
