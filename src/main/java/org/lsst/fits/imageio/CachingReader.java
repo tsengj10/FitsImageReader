@@ -19,13 +19,11 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -103,7 +101,7 @@ public class CachingReader {
                             if (line == null) {
                                 break;
                             } else if (line.startsWith("#")) {
-                                continue;
+                                //continue;
                             } else {
                                 lines.add(line);
                             }
@@ -135,64 +133,46 @@ public class CachingReader {
         return lines == null ? 0 : lines.size();
     }
 
-    @SuppressWarnings("null")
     void readImage(ImageInputStream fileInput, Rectangle sourceRegion, Graphics2D g, RGBColorMap cmap, BiasCorrection bc, boolean showBiasRegion, char wcsLetter, long[] globalScale, Map<String, Map<String, Object>> wcsOverride) throws IOException {
 
         try {
-            Queue<CompletableFuture> l1 = new ConcurrentLinkedQueue<>();
-            Queue<CompletableFuture> l2 = new ConcurrentLinkedQueue<>();
-            Queue<CompletableFuture> l3 = new ConcurrentLinkedQueue<>();
+            Queue<CompletableFuture<Void>> segmentsCompletables = new ConcurrentLinkedQueue<>();
+            Queue<CompletableFuture<Void>> bufferedImageCompletables = new ConcurrentLinkedQueue<>();
             List<String> lines = linesCache.get(fileInput);
-            lines.stream().map((line) -> segmentCache.get(new MultiKey3(new File(line), wcsLetter, wcsOverride))).forEach(new Consumer<CompletableFuture>() {
-                @Override
-                public void accept(CompletableFuture futureSegments) {
-                    l1.add(futureSegments.thenAccept(new Consumer<List<Segment>>() {
-                        @Override
-                        public void accept(List<Segment> segments) {
-                            List<Segment> segmentsToRead = computeSegmentsToRead(segments, sourceRegion);
-                            segmentsToRead.parallelStream().forEach(new Consumer<Segment>() {
-                                @Override
-                                public void accept(Segment segment) {
-                                    CompletableFuture<BufferedImage> fbi = bufferedImageCache.get(new MultiKey3(segment, bc, globalScale));
-                                    l3.add(fbi.thenAccept(new Consumer<BufferedImage>() {
-                                        @Override
-                                        public void accept(BufferedImage bi) {
-                                            Timed.execute(new Callable<Object>() {
-                                                @Override
-                                                public Object call() throws Exception {
-                                                    // g2=g is the graphics we are writing into
-                                                    Graphics2D g2 = (Graphics2D) g.create();
-                                                    g2.transform(segment.getWCSTranslation(showBiasRegion));
-                                                    BufferedImage subimage;
-                                                    if (showBiasRegion) {
-                                                        subimage = bi;
-                                                    } else {
-                                                        Rectangle datasec = segment.getDataSec();
-                                                        subimage = bi.getSubimage(datasec.x, datasec.y, datasec.width, datasec.height);
-                                                    }
-                                                    if (cmap != CameraImageReader.DEFAULT_COLOR_MAP) {
-                                                        LookupOp op = cmap.getLookupOp();
-                                                        subimage = op.filter(subimage, null);
-                                                    }
-                                                    g2.drawImage(subimage, 0, 0, null);
-                                                    g2.dispose();
-                                                    return null;
-                                                }
-                                            }, "drawImage for segment %s took %dms", segment);
-                                        }
-                                    }));
+            lines.stream().map((line) -> segmentCache.get(new MultiKey3<>(new File(line), wcsLetter, wcsOverride))).forEach((CompletableFuture<List<Segment>> futureSegments) -> {
+                segmentsCompletables.add(futureSegments.thenAccept((List<Segment> segments) -> {
+                    List<Segment> segmentsToRead = computeSegmentsToRead(segments, sourceRegion);
+                    // NB parallel stream here
+                    segmentsToRead.parallelStream().forEach((Segment segment) -> {
+                        CompletableFuture<BufferedImage> fbi = bufferedImageCache.get(new MultiKey3<>(segment, bc, globalScale));
+                        bufferedImageCompletables.add(fbi.thenAccept((BufferedImage bi) -> {
+                            Timed.execute(() -> {
+                                // g2=g is the graphics we are writing into
+                                Graphics2D g2 = (Graphics2D) g.create();
+                                g2.transform(segment.getWCSTranslation(showBiasRegion));
+                                BufferedImage subimage;
+                                if (showBiasRegion) {
+                                    subimage = bi;
+                                } else {
+                                    Rectangle datasec = segment.getDataSec();
+                                    subimage = bi.getSubimage(datasec.x, datasec.y, datasec.width, datasec.height);
                                 }
-                            });
-                        }
-                    }));
-                }
+                                if (cmap != CameraImageReader.DEFAULT_COLOR_MAP) {
+                                    LookupOp op = cmap.getLookupOp();
+                                    subimage = op.filter(subimage, null);
+                                }
+                                g2.drawImage(subimage, 0, 0, null);
+                                g2.dispose();
+                                return null;
+                            }, "drawImage for segment %s took %dms", segment);
+                        }));
+                    });
+                }));
             });
-            LOG.log(Level.INFO, "Waiting for {0} segments", l1.size());
-            CompletableFuture.allOf(l1.toArray(new CompletableFuture[l1.size()])).join();
-            LOG.log(Level.INFO, "Waiting for {0} raw data", l2.size());
-            CompletableFuture.allOf(l2.toArray(new CompletableFuture[l2.size()])).join();
-            LOG.log(Level.INFO, "Waiting for {0} buffered image", l3.size());
-            CompletableFuture.allOf(l3.toArray(new CompletableFuture[l3.size()])).join();
+            LOG.log(Level.INFO, "Waiting for {0} segments", segmentsCompletables.size());
+            CompletableFuture.allOf(segmentsCompletables.toArray(new CompletableFuture[segmentsCompletables.size()])).join();
+            LOG.log(Level.INFO, "Waiting for {0} buffered images", bufferedImageCompletables.size());
+            CompletableFuture.allOf(bufferedImageCompletables.toArray(new CompletableFuture[bufferedImageCompletables.size()])).join();
             LOG.log(Level.INFO, "Done waiting");
         } catch (CompletionException x) {
             Throwable cause = x.getCause();
@@ -300,7 +280,6 @@ public class CachingReader {
     }
 
     private static ScalingUtils histogram(Rectangle datasec, IntBuffer intBuffer, Segment segment, BiasCorrection.CorrectionFactors factors) {
-        ScalingUtils su;
         // Note: This is hardwired for Camera (18 bit) data
         int[] count = new int[1 << 18];
         for (int y = datasec.y; y < datasec.height + datasec.y; y++) {
@@ -310,15 +289,14 @@ public class CachingReader {
                 p++;
             }
         }
-        su = new ScalingUtils(count);
-        return su;
+        return new ScalingUtils(count);
     }
 
     public List<Segment> readSegments(ImageInputStream in) throws InterruptedException, ExecutionException {
         List<Segment> result = new ArrayList<>();
         List<String> lines = linesCache.get(in);
         for (String line : lines) {
-            result.addAll((List<Segment>) (segmentCache.get(new MultiKey3(new File(line), 'Q', null)).get()));
+            result.addAll((List<Segment>) (segmentCache.get(new MultiKey3<>(new File(line), 'Q', null)).get()));
         }
         return result;
     }

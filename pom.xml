@@ -43,4 +43,16 @@
         </dependency>
     </dependencies>
     <description>FITS image reader for use with cantaloupe.</description>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.8.1</version>
+                <configuration>
+                    <compilerArgument>-Xlint:unchecked</compilerArgument>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

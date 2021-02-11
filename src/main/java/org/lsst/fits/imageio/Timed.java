@@ -5,18 +5,27 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- *
+ * Utility for logging timing info
  * @author tonyj
  */
 public class Timed {
 
     private static final Logger LOG = Logger.getLogger(Timed.class.getName());
+    private static final Level DEFAULT_LOG_LEVEL = Level.FINE;
 
     public static <T> T execute(Callable<T> callable, String message, Object... args) {
-        return execute(callable, (time) -> String.format(message, append(args,time)));
+        return execute(DEFAULT_LOG_LEVEL, callable, message, args);
+    }    
+
+    public static <T> T execute(Level logLevel, Callable<T> callable, String message, Object... args) {
+        return execute(logLevel, callable, (time) -> String.format(message, append(args,time)));
     }
 
     private static <T> T execute(Callable<T> callable, MessageSupplier message) {
+        return execute(DEFAULT_LOG_LEVEL, callable, message);
+    }
+
+    private static <T> T execute(Level logLevel, Callable<T> callable, MessageSupplier message) {
         long start = System.currentTimeMillis();
         try {
             return callable.call();
@@ -24,7 +33,7 @@ public class Timed {
             return Timed.sneakyThrow(x);
         } finally {
             long stop = System.currentTimeMillis();
-            LOG.log(Level.INFO, () -> message.get(stop - start));
+            LOG.log(logLevel, () -> message.get(stop - start));
         }
     }
 

@@ -150,7 +150,11 @@ public class Segment {
                 return (IntBuffer) ((CompressedImageHDU) compressedImageHDU).getUncompressedData();
             }
         } else {
+            // TODO: Allocation of direct buffers is very slow. Perhaps we should not use them, or 
+            // keep them for reuse?
             ByteBuffer bb = ByteBuffer.allocateDirect(rawDataLength);
+            // NB, the BufferedFile is kept open (and eventually closed) by the openFileCache in 
+            // Caching reader, so it is not necessary to close it here.
             FileChannel fileChannel = bf.getChannel();
             int len = fileChannel.read(bb, seekPosition);
             if (bb.remaining() != 0) {
