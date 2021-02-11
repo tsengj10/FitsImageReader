@@ -50,8 +50,8 @@ public class Segment {
     private final int rawDataLength;
     private final boolean isCompressed;
     private final BasicHDU<?> compressedImageHDU;
-    private final int ccdX;
-    private final int ccdY;
+//    private final int ccdX;
+//    private final int ccdY;
     private int channel;
 
     public Segment(Header header, File file, BufferedFile bf, String ccdSlot, char wcsLetter, Map<String, Object> wcsOverride) throws IOException, FitsException {
@@ -99,8 +99,9 @@ public class Segment {
             crval2 = header.getDoubleValue("CRVAL2" + wcsLetter);
             channel = header.getIntValue("CHANNEL");
         }
-        ccdX = Integer.parseInt(ccdSlot.substring(1, 2));
-        ccdY = Integer.parseInt(ccdSlot.substring(2, 3));
+        //This does not work for corner rafts!
+        //ccdX = Integer.parseInt(ccdSlot.substring(1, 2));
+        //ccdY = Integer.parseInt(ccdSlot.substring(2, 3));
         wcsTranslation = new AffineTransform(pc1_1, pc2_1, pc1_2, pc2_2, crval1, crval2);
         wcsTranslation.translate(datasec.x + 0.5, datasec.y + 0.5);
         //wcsTranslation.translate(crval1, crval2);
@@ -170,12 +171,12 @@ public class Segment {
 
     public AffineTransform getWCSTranslation(boolean includeOverscan) {
         if (includeOverscan) {
-            int parallel_overscan = nAxis2 - datasec.height;
-            int serial_overscan = nAxis1 - datasec.width;
-            AffineTransform wcsTranslation = new AffineTransform();
-            int c = channel > 8 ? 16 - channel : channel - 1;
-            wcsTranslation.translate(crval1 + ccdY * serial_overscan * 8 + (c % 8) * serial_overscan, crval2 - parallel_overscan * pc2_2);
-            wcsTranslation.scale(pc1_1, pc2_2);
+//            int parallel_overscan = nAxis2 - datasec.height;
+//            int serial_overscan = nAxis1 - datasec.width;
+//            AffineTransform wcsTranslation = new AffineTransform();
+//            int c = channel > 8 ? 16 - channel : channel - 1;
+//            wcsTranslation.translate(crval1 + ccdY * serial_overscan * 8 + (c % 8) * serial_overscan, crval2 - parallel_overscan * pc2_2);
+//            wcsTranslation.scale(pc1_1, pc2_2);
             return wcsTranslation;
         } else {
             return wcsTranslation;

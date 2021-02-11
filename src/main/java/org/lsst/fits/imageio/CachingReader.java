@@ -262,18 +262,15 @@ public class CachingReader {
         if (globalScale != null) {
             su = new ScalingUtils(globalScale);
         } else {
-            // Note: This is hardwired for Camera (18 bit) data
-            int[] count = new int[1 << 18];
-            for (int x = datasec.x; x < datasec.width + datasec.x; x++) {
-                for (int y = datasec.y; y < datasec.height + datasec.y; y++) {
-                    count[Math.max(intBuffer.get(x + y * segment.getNAxis1()) - factors.correctionFactor(x, y), 0)]++;
-                }
-            }
-            su = new ScalingUtils(count);
+            su = histogram(datasec, intBuffer, segment, factors);
         }
         final int max = su.getMax();
         int[] cdf = su.computeCDF();
+        
         int range = cdf[max];
+        for (int i=su.getMin(); i<=max; i++) {
+            cdf[i] = CameraImageReader.DEFAULT_COLOR_MAP.getRGB(cdf[i] * 255 / range);
+        }
 
         // Scale data 
         BufferedImage image = CameraImageReader.IMAGE_TYPE.createBufferedImage(segment.getNAxis1(), segment.getNAxis2());
@@ -287,15 +284,34 @@ public class CachingReader {
 //        graphics.fillRect(datasec.x + datasec.width, 0, segment.getNAxis1() - datasec.x - datasec.width, segment.getNAxis2());
 //        graphics.setColor(Color.BLUE);
 //        graphics.fillRect(datasec.x, datasec.y + datasec.height, datasec.width, segment.getNAxis2());
+        copyAndScaleData(datasec, segment, cdf, intBuffer, factors, db);
+        return image;
+    }
 
-        for (int x = datasec.x; x < datasec.width + datasec.x; x++) {
-            for (int y = datasec.y; y < datasec.height + datasec.y; y++) {
-                int p = x + y * segment.getNAxis1();
-                int rgb = CameraImageReader.DEFAULT_COLOR_MAP.getRGB(cdf[Math.max(intBuffer.get(p) - factors.correctionFactor(x, y), 0)] * 255 / range);
+    private static void copyAndScaleData(Rectangle datasec, Segment segment, int[] cdf, IntBuffer intBuffer, BiasCorrection.CorrectionFactors factors, DataBuffer db) {
+        for (int y = datasec.y; y < datasec.height + datasec.y; y++) {
+            int p = datasec.x + y * segment.getNAxis1();
+            for (int x = datasec.x; x < datasec.width + datasec.x; x++) {
+                int rgb = cdf[Math.max(intBuffer.get(p) - factors.correctionFactor(x, y), 0)];
                 db.setElem(p, rgb);
+                p++;
             }
         }
-        return image;
+    }
+
+    private static ScalingUtils histogram(Rectangle datasec, IntBuffer intBuffer, Segment segment, BiasCorrection.CorrectionFactors factors) {
+        ScalingUtils su;
+        // Note: This is hardwired for Camera (18 bit) data
+        int[] count = new int[1 << 18];
+        for (int y = datasec.y; y < datasec.height + datasec.y; y++) {
+            int p = datasec.x + y * segment.getNAxis1();
+            for (int x = datasec.x; x < datasec.width + datasec.x; x++) {
+                count[Math.max(intBuffer.get(p) - factors.correctionFactor(x, y), 0)]++;
+                p++;
+            }
+        }
+        su = new ScalingUtils(count);
+        return su;
     }
 
     public List<Segment> readSegments(ImageInputStream in) throws InterruptedException, ExecutionException {
