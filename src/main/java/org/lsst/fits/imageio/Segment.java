@@ -8,10 +8,10 @@ import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
-import java.nio.channels.FileChannel;
 import java.nio.file.StandardOpenOption;
 import java.util.Map;
 import java.util.Objects;
@@ -21,16 +21,11 @@ import java.util.concurrent.Executor;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.DataFormatException;
-import java.util.zip.GZIPInputStream;
 import java.util.zip.Inflater;
-import nom.tam.fits.BasicHDU;
-import nom.tam.fits.Data;
 import nom.tam.fits.FitsException;
-import nom.tam.fits.FitsFactory;
 import nom.tam.fits.FitsUtil;
 import nom.tam.fits.Header;
 import nom.tam.fits.header.Standard;
-import nom.tam.image.compression.hdu.CompressedImageHDU;
 import nom.tam.util.BufferedFile;
 
 /**
@@ -58,11 +53,16 @@ public class Segment {
     private final char wcsLetter;
     private final int rawDataLength;
     private final boolean isCompressed;
-    private final BasicHDU<?> compressedImageHDU;
+//    private final BasicHDU<?> compressedImageHDU;
 //    private final int ccdX;
 //    private final int ccdY;
     private int channel;
-    private BufferedFile bf;
+//    private BufferedFile bf;
+    // Used only with compressed data
+    private final int cAxis1;
+    private final int cAxis2;
+    private final int zTile1;
+    private final int zTile2;
 
     public Segment(Header header, File file, BufferedFile bf, String ccdSlot, char wcsLetter, Map<String, Object> wcsOverride) throws IOException, FitsException {
         this.file = file;
@@ -70,22 +70,33 @@ public class Segment {
         this.wcsLetter = wcsLetter;
         isCompressed = header.getBooleanValue("ZIMAGE");
         if (isCompressed) {
-            nAxis1 = header.getIntValue("ZNAXIS1");
-            nAxis2 = header.getIntValue("ZNAXIS2");
+            // Note, nom,tam.fits has support for many/all compression types, 
+            // but performance for the way we are trying to use it leaves much
+            // to be desired. The "deferred data reading" used by nom.tam.fits also
+            // has issues with requiring files to remain open to be used later.
+            // For now we only support the GZIP_2 type used for camera data.
+            if (!"GZIP_2".equals(header.getStringValue("ZCMPTYPE"))) {
+                throw new FitsException("Unsupported compression type: "+header.getStringValue("ZCMPTYPE"));
+            }
+            nAxis1 = header.getIntValue("ZNAXIS1"); // 576
+            nAxis2 = header.getIntValue("ZNAXIS2"); // 2048       
             rawDataLength = header.getIntValue(Standard.NAXIS1) * header.getIntValue(Standard.NAXIS2) + header.getIntValue("PCOUNT");
-            Data data = header.makeData();
-            data.read(bf);
-            compressedImageHDU = FitsFactory.hduFactory(header, data);
-            this.bf = bf;
+            // There give the size of the binary table giving the offsets into the compressed data
+            cAxis1 = header.getIntValue(Standard.NAXIS1); // 8
+            cAxis2 = header.getIntValue(Standard.NAXIS2); // 2048
+            // These give the size of the compressed "tiles"
+            zTile1 = header.getIntValue("ZTILE1"); // 576
+            zTile2 = header.getIntValue("ZTILE2"); // 1  
         } else {
             nAxis1 = header.getIntValue(Standard.NAXIS1);
             nAxis2 = header.getIntValue(Standard.NAXIS2);
             rawDataLength = nAxis1 * nAxis2 * 4;
-            // Skip the data (for now)
-            int pad = FitsUtil.padding(rawDataLength);
-            bf.skip(rawDataLength + pad);
-            compressedImageHDU = null;
+            cAxis1 = cAxis2 = zTile1 = zTile2 = 0;
         }
+        // Skip the data (for now)
+        int pad = FitsUtil.padding(rawDataLength);
+        bf.skip(rawDataLength + pad);
+        
         if (wcsOverride != null) {
             String datasecString = wcsOverride.get("DATASEC").toString();
             datasec = computeDatasec(datasecString);
@@ -127,7 +138,6 @@ public class Segment {
         double width = Math.abs(origin.getX() - corner.getX());
         double height = Math.abs(origin.getY() - corner.getY());
         wcs = new Rectangle2D.Double(x, y, width, height);
-        //System.out.printf("wcs=%s\n", wcs);
     }
 
     private Rectangle computeDatasec(String datasecString) throws IOException, NumberFormatException {
@@ -154,110 +164,98 @@ public class Segment {
         return file;
     }
 
-    // TODO: Remove, no longer used
-    private IntBuffer readData(BufferedFile bf) throws IOException, FitsException {
-        if (isCompressed) {
-            synchronized (bf) {
-                // FIXME: This internally uses the bf passed in to the constructor, which may have been closed by now
-                return (IntBuffer) ((CompressedImageHDU) compressedImageHDU).getUncompressedData();
-            }
-        } else {
-            // TODO: Allocation of direct buffers is very slow. Perhaps we should not use them, or 
-            // keep them for reuse?
-            ByteBuffer bb = ByteBuffer.allocateDirect(rawDataLength);
-            // NB, the BufferedFile is kept open (and eventually closed) by the openFileCache in 
-            // Caching reader, so it is not necessary to close it here.
-            FileChannel fileChannel = bf.getChannel();
-            int len = fileChannel.read(bb, seekPosition);
-            if (bb.remaining() != 0) {
-                throw new IOException("Unexpected length " + len);
-            }
-            bb.flip();
-            return bb.asIntBuffer();
+    // Data in the compressed byte array is stored with the bytes shuffled, this routine unshuffles them
+    private void unshuffle(byte[] in, IntBuffer out) {
+        int length = in.length / 4;
+        for (int i = 0; i < length; i++) {
+            out.put(((0xff & in[i]) << 24) + ((0xff & in[i + length]) << 16) + ((0xff & in[i + 2 * length]) << 8) + ((0xff & in[i + 3 * length])));
         }
     }
 
-    private void unshuffle(byte[] in, IntBuffer out, int offset) {
-        int length = in.length / 4;
-        // Data in the compressed byte array is stored with the bytes shuffled, this routine unshuffles them
-        for (int i = 0; i < length; i++) {
-            out.put(offset + i, ((0xff & in[i]) << 24) + ((0xff & in[i + length]) << 16) + ((0xff & in[i + 2 * length]) << 8) + ((0xff & in[i + 3 * length])));
+    // The compressed data is store as a FITS BinaryTable, where is row of the image is decompressed 
+    // independently.
+    private IntBuffer decodeCompressedData(ByteBuffer bb) {
+        // We use inflater directly since it can be reused (unlike GZIPInputStream)
+        Inflater inflater = new Inflater(true);
+        try {
+            IntBuffer result = IntBuffer.allocate(nAxis1 * nAxis2);
+            // offsets contain the length and offset of each tile
+            int[] offsets = new int[cAxis1 * cAxis2 / 4];
+            bb.asIntBuffer().get(offsets);
+            bb.position(cAxis1 * cAxis2);
+            // Note, the +1 is required by Inflater (actually zlib)
+            byte[] decompressed = new byte[nAxis1 * 4 + 1];
+            // We assume the compressed data will never be larger than the decompressed
+            // data, but that might not be true.
+            byte[] compressed = new byte[nAxis1 * 4 + 1];
+            // Note, the format is designed to allow decompression to be parallelized
+            // but since we are typically reading many file in parallel there is little
+            // to be gained.
+            for (int i = 0; i < cAxis2; i++) {
+                // For jdk 8 we need to copy the input data into a byte array. If we
+                // use jdk11 we can directly send the ByteBuffer to the inflater.
+                bb.get(compressed, 0, offsets[i * 2]);
+                inflater.reset();
+                // 10 is to skip the gzip header
+                inflater.setInput(compressed, 10, offsets[i * 2] - 10);
+                int p = 0;
+                while (!inflater.finished()) {
+                    int l = inflater.inflate(decompressed, p, decompressed.length - p);
+                    p += l;
+                }
+                unshuffle(decompressed, result);
+            }
+            result.flip();
+            return result;
+        } catch (DataFormatException x) {
+            throw new CompletionException("Error decompressing image", x);
+        } finally {
+            inflater.end();
         }
     }
 
     public CompletableFuture<RawData> readRawDataAsync(Executor executor) {
-        
-        if (isCompressed) {
-            return CompletableFuture.supplyAsync(() -> {
-                try {
-                    CompressedImageHDU binaryTable = (CompressedImageHDU) compressedImageHDU;
-                    IntBuffer ib = IntBuffer.allocate(576 * 2048);
-                    byte[][] data;
-                    GZIPInputStream in;
-                    synchronized (bf) {
-                        data = (byte[][]) binaryTable.getColumn("COMPRESSED_DATA");
-                    }
-                    // Note, we use an Inflater directly, rather than GZIPInputStream since 
-                    // it can be reused, with a lot less overhead than creating a new GZIPInputStream.
-                    Inflater inflater = new Inflater(true);
-                    for (int i = 0; i < data.length; i++) {
-                        final int offset = i * 576;
-                        final byte[] d = data[i];
-                        try {
-                            inflater.reset();
-                            // Skip 10 byte gzip header
-                            inflater.setInput(d, 10, d.length - 10); 
-                            byte[] bb = new byte[576 * 4 + 1];
-                            int p = 0;
-                            while (!inflater.finished()) {
-                                int l = inflater.inflate(bb, p, bb.length - p);
-                                p += l;
-                            }
-                            unshuffle(bb, ib, offset);
-                        } catch (DataFormatException x) {
-                            throw new CompletionException("Error decompressing image", x);
-                        }
-                    }
-                    inflater.end();
-                    ib.position(ib.limit());
-                    ib.flip();
-                    return new RawData(Segment.this, ib);
-                } catch (FitsException ex) {
-                    throw new RuntimeException("Error decompressing file", ex);
-                }
-            }, executor);
-        } else {
-            CompletableFuture<RawData> result = new CompletableFuture<>();
-            try {
-                AsynchronousFileChannel asyncChannel = AsynchronousFileChannel.open(file.toPath(), StandardOpenOption.READ);
-                ByteBuffer bb = ByteBuffer.allocateDirect(rawDataLength);
-                asyncChannel.read(bb, seekPosition, result, new CompletionHandler<Integer, CompletableFuture<RawData>>() {
-                    @Override
-                    public void completed(Integer len, CompletableFuture<RawData> future) {
-                        try {
-                            asyncChannel.close();
-                        } catch (IOException ex) {
-                            future.completeExceptionally(ex);
-                        }
-                        bb.flip();
-                        future.complete(new RawData(Segment.this, bb.asIntBuffer()));
-                    }
 
-                    @Override
-                    public void failed(Throwable x, CompletableFuture<RawData> future) {
-                        try {
-                            asyncChannel.close();
-                        } catch (IOException ex) {
-                            // We already have an IO exception in progress, so ignore this additional one
-                        }
-                        future.completeExceptionally(x);
-                    }
-                });
-            } catch (IOException x) {
-                result.completeExceptionally(x);
-            }
-            return result;
+        CompletableFuture<ByteBuffer> futureByteBuffer = readByteBufferAsync();
+        if (isCompressed) {
+            return futureByteBuffer.thenApply((bb) -> decodeCompressedData(bb)).thenApply((ib) -> new RawData(this, ib));
+        } else {
+            return futureByteBuffer.thenApply((bb) -> new RawData(this, bb.asIntBuffer()));
         }
+    }
+
+    private CompletableFuture<ByteBuffer> readByteBufferAsync() {
+        CompletableFuture<ByteBuffer> result = new CompletableFuture<>();
+        try {
+            AsynchronousFileChannel asyncChannel = AsynchronousFileChannel.open(file.toPath(), StandardOpenOption.READ);
+            ByteBuffer bb = ByteBuffer.allocateDirect(rawDataLength);
+            bb.order(ByteOrder.BIG_ENDIAN);
+            asyncChannel.read(bb, seekPosition, result, new CompletionHandler<Integer, CompletableFuture<ByteBuffer>>() {
+                @Override
+                public void completed(Integer len, CompletableFuture<ByteBuffer> future) {
+                    try {
+                        asyncChannel.close();
+                    } catch (IOException ex) {
+                        future.completeExceptionally(ex);
+                    }
+                    bb.flip();
+                    future.complete(bb);
+                }
+
+                @Override
+                public void failed(Throwable x, CompletableFuture<ByteBuffer> future) {
+                    try {
+                        asyncChannel.close();
+                    } catch (IOException ex) {
+                        // We already have an IO exception in progress, so ignore this additional one
+                    }
+                    future.completeExceptionally(x);
+                }
+            });
+        } catch (IOException x) {
+            result.completeExceptionally(x);
+        }
+        return result;
     }
 
     public int getNAxis1() {

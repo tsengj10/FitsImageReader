@@ -3,7 +3,6 @@ package org.lsst.fits.imageio;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
-import com.github.benmanes.caffeine.cache.RemovalCause;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
@@ -24,7 +23,6 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -43,7 +41,6 @@ import org.lsst.fits.imageio.cmap.RGBColorMap;
 public class CachingReader {
 
     private final AsyncLoadingCache<MultiKey3<File, Character, Map<String, Map<String, Object>>>, List<Segment>> segmentCache;
-    private final LoadingCache<File, BufferedFile> openFileCache;
     private final AsyncLoadingCache<Segment, RawData> rawDataCache;
     private final AsyncLoadingCache<MultiKey3<Segment, BiasCorrection, long[]>, BufferedImage> bufferedImageCache;
     private final LoadingCache<ImageInputStream, List<String>> linesCache;
@@ -51,24 +48,13 @@ public class CachingReader {
     private static final Logger LOG = Logger.getLogger(CachingReader.class.getName());
 
     public CachingReader() {
-        openFileCache = Caffeine.newBuilder()
-                .expireAfterAccess(10, TimeUnit.MINUTES)
-                .removalListener((File file, BufferedFile bf, RemovalCause rc) -> {
-                    try {
-                        bf.close();
-                    } catch (IOException ex) {
-                        LOG.log(Level.WARNING, "Error closing file "+file, ex);
-                    }
-                })
-                .build((File file) -> new BufferedFile(file, "r"));
 
         segmentCache = Caffeine.newBuilder()
                 .maximumSize(Integer.getInteger("org.lsst.fits.imageio.segmentCacheSize", 10_000))
                 .recordStats()
                 .buildAsync((MultiKey3<File, Character, Map<String, Map<String, Object>>> key) -> {
                     return Timed.execute(() -> {
-                        BufferedFile bf = openFileCache.get(key.getKey1());
-                        return readSegments(key.getKey1(), bf, key.getKey2(), key.getKey3());
+                        return readSegments(key.getKey1(), key.getKey2(), key.getKey3());
                     }, "Loading %s took %dms", key.getKey1());
                 });
 
@@ -191,13 +177,12 @@ public class CachingReader {
         }
     }
 
-    private static List<Segment> readSegments(File file, BufferedFile bf, char wcsLetter, Map<String, Map<String, Object>> wcsOverride) throws IOException, TruncatedFileException, FitsException {
+    private static List<Segment> readSegments(File file, char wcsLetter, Map<String, Map<String, Object>> wcsOverride) throws IOException, TruncatedFileException, FitsException {
         List<Segment> result = new ArrayList<>();
         String ccdSlot = null;
         String raftSlot = null;
         int nSegments = 16;
-        synchronized (bf) {
-            bf.seek(0);
+        try (BufferedFile bf = new BufferedFile(file, "r")) {
             for (int i = 0; i < nSegments + 1; i++) {
                 Header header = new Header(bf);
                 if (i == 0) {
