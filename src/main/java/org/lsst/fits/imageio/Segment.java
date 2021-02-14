@@ -9,11 +9,20 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
+import java.nio.channels.AsynchronousFileChannel;
+import java.nio.channels.CompletionHandler;
 import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.DataFormatException;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.Inflater;
 import nom.tam.fits.BasicHDU;
 import nom.tam.fits.Data;
 import nom.tam.fits.FitsException;
@@ -53,6 +62,7 @@ public class Segment {
 //    private final int ccdX;
 //    private final int ccdY;
     private int channel;
+    private BufferedFile bf;
 
     public Segment(Header header, File file, BufferedFile bf, String ccdSlot, char wcsLetter, Map<String, Object> wcsOverride) throws IOException, FitsException {
         this.file = file;
@@ -66,6 +76,7 @@ public class Segment {
             Data data = header.makeData();
             data.read(bf);
             compressedImageHDU = FitsFactory.hduFactory(header, data);
+            this.bf = bf;
         } else {
             nAxis1 = header.getIntValue(Standard.NAXIS1);
             nAxis2 = header.getIntValue(Standard.NAXIS2);
@@ -143,7 +154,8 @@ public class Segment {
         return file;
     }
 
-    public IntBuffer readData(BufferedFile bf) throws IOException, FitsException {
+    // TODO: Remove, no longer used
+    private IntBuffer readData(BufferedFile bf) throws IOException, FitsException {
         if (isCompressed) {
             synchronized (bf) {
                 // FIXME: This internally uses the bf passed in to the constructor, which may have been closed by now
@@ -162,6 +174,89 @@ public class Segment {
             }
             bb.flip();
             return bb.asIntBuffer();
+        }
+    }
+
+    private void unshuffle(byte[] in, IntBuffer out, int offset) {
+        int length = in.length / 4;
+        // Data in the compressed byte array is stored with the bytes shuffled, this routine unshuffles them
+        for (int i = 0; i < length; i++) {
+            out.put(offset + i, ((0xff & in[i]) << 24) + ((0xff & in[i + length]) << 16) + ((0xff & in[i + 2 * length]) << 8) + ((0xff & in[i + 3 * length])));
+        }
+    }
+
+    public CompletableFuture<RawData> readRawDataAsync(Executor executor) {
+        
+        if (isCompressed) {
+            return CompletableFuture.supplyAsync(() -> {
+                try {
+                    CompressedImageHDU binaryTable = (CompressedImageHDU) compressedImageHDU;
+                    IntBuffer ib = IntBuffer.allocate(576 * 2048);
+                    byte[][] data;
+                    GZIPInputStream in;
+                    synchronized (bf) {
+                        data = (byte[][]) binaryTable.getColumn("COMPRESSED_DATA");
+                    }
+                    // Note, we use an Inflater directly, rather than GZIPInputStream since 
+                    // it can be reused, with a lot less overhead than creating a new GZIPInputStream.
+                    Inflater inflater = new Inflater(true);
+                    for (int i = 0; i < data.length; i++) {
+                        final int offset = i * 576;
+                        final byte[] d = data[i];
+                        try {
+                            inflater.reset();
+                            // Skip 10 byte gzip header
+                            inflater.setInput(d, 10, d.length - 10); 
+                            byte[] bb = new byte[576 * 4 + 1];
+                            int p = 0;
+                            while (!inflater.finished()) {
+                                int l = inflater.inflate(bb, p, bb.length - p);
+                                p += l;
+                            }
+                            unshuffle(bb, ib, offset);
+                        } catch (DataFormatException x) {
+                            throw new CompletionException("Error decompressing image", x);
+                        }
+                    }
+                    inflater.end();
+                    ib.position(ib.limit());
+                    ib.flip();
+                    return new RawData(Segment.this, ib);
+                } catch (FitsException ex) {
+                    throw new RuntimeException("Error decompressing file", ex);
+                }
+            }, executor);
+        } else {
+            CompletableFuture<RawData> result = new CompletableFuture<>();
+            try {
+                AsynchronousFileChannel asyncChannel = AsynchronousFileChannel.open(file.toPath(), StandardOpenOption.READ);
+                ByteBuffer bb = ByteBuffer.allocateDirect(rawDataLength);
+                asyncChannel.read(bb, seekPosition, result, new CompletionHandler<Integer, CompletableFuture<RawData>>() {
+                    @Override
+                    public void completed(Integer len, CompletableFuture<RawData> future) {
+                        try {
+                            asyncChannel.close();
+                        } catch (IOException ex) {
+                            future.completeExceptionally(ex);
+                        }
+                        bb.flip();
+                        future.complete(new RawData(Segment.this, bb.asIntBuffer()));
+                    }
+
+                    @Override
+                    public void failed(Throwable x, CompletableFuture<RawData> future) {
+                        try {
+                            asyncChannel.close();
+                        } catch (IOException ex) {
+                            // We already have an IO exception in progress, so ignore this additional one
+                        }
+                        future.completeExceptionally(x);
+                    }
+                });
+            } catch (IOException x) {
+                result.completeExceptionally(x);
+            }
+            return result;
         }
     }
 

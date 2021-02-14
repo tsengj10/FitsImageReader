@@ -23,6 +23,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -51,12 +52,12 @@ public class CachingReader {
 
     public CachingReader() {
         openFileCache = Caffeine.newBuilder()
-                .expireAfterAccess(1, TimeUnit.MINUTES)
+                .expireAfterAccess(10, TimeUnit.MINUTES)
                 .removalListener((File file, BufferedFile bf, RemovalCause rc) -> {
                     try {
                         bf.close();
                     } catch (IOException ex) {
-                        LOG.log(Level.WARNING, "Error closing file", ex);
+                        LOG.log(Level.WARNING, "Error closing file "+file, ex);
                     }
                 })
                 .build((File file) -> new BufferedFile(file, "r"));
@@ -74,20 +75,17 @@ public class CachingReader {
         rawDataCache = Caffeine.newBuilder()
                 .maximumSize(Integer.getInteger("org.lsst.fits.imageio.rawDataCacheSize", 1_000))
                 .recordStats()
-                .buildAsync((Segment segment) -> {
-                    return Timed.execute(() -> {
-                        BufferedFile bf = openFileCache.get(segment.getFile());
-                        return readRawData(segment, bf);
-                    }, "Reading raw data for %s took %dms", segment);
-                });
+                .buildAsync((Segment segment, Executor executor) -> segment.readRawDataAsync(executor));
 
         bufferedImageCache = Caffeine.newBuilder()
                 .maximumSize(Integer.getInteger("org.lsst.fits.imageio.bufferedImageCacheSize", 10_000))
                 .recordStats()
-                .buildAsync((MultiKey3<Segment, BiasCorrection, long[]> key) -> {
-                    return Timed.execute(() -> {
-                        return createBufferedImage(rawDataCache.get(key.getKey1()).get(), key.getKey2(), key.getKey3());
-                    }, "Loading buffered image for segment %s took %dms", key.getKey1());
+                .buildAsync((MultiKey3<Segment, BiasCorrection, long[]> key, Executor executor) -> {
+                    return rawDataCache.get(key.getKey1()).thenApply(rawData -> { 
+                        return Timed.execute(() -> {
+                            return createBufferedImage(rawData, key.getKey2(), key.getKey3());
+                        }, "Loading buffered image for segment %s took %dms", key.getKey1());
+                    });
                 });
 
         linesCache = Caffeine.newBuilder()
@@ -142,8 +140,7 @@ public class CachingReader {
             lines.stream().map((line) -> segmentCache.get(new MultiKey3<>(new File(line), wcsLetter, wcsOverride))).forEach((CompletableFuture<List<Segment>> futureSegments) -> {
                 segmentsCompletables.add(futureSegments.thenAccept((List<Segment> segments) -> {
                     List<Segment> segmentsToRead = computeSegmentsToRead(segments, sourceRegion);
-                    // NB parallel stream here
-                    segmentsToRead.parallelStream().forEach((Segment segment) -> {
+                    segmentsToRead.stream().forEach((Segment segment) -> {
                         CompletableFuture<BufferedImage> fbi = bufferedImageCache.get(new MultiKey3<>(segment, bc, globalScale));
                         bufferedImageCompletables.add(fbi.thenAccept((BufferedImage bi) -> {
                             Timed.execute(() -> {
@@ -169,7 +166,7 @@ public class CachingReader {
                     });
                 }));
             });
-            LOG.log(Level.INFO, "Waiting for {0} segments", segmentsCompletables.size());
+            LOG.log(Level.INFO, "Waiting for {0} files", segmentsCompletables.size());
             CompletableFuture.allOf(segmentsCompletables.toArray(new CompletableFuture[segmentsCompletables.size()])).join();
             LOG.log(Level.INFO, "Waiting for {0} buffered images", bufferedImageCompletables.size());
             CompletableFuture.allOf(bufferedImageCompletables.toArray(new CompletableFuture[bufferedImageCompletables.size()])).join();
@@ -227,12 +224,7 @@ public class CachingReader {
         return result;
     }
 
-    private static RawData readRawData(Segment segment, BufferedFile bf) throws IOException, FitsException {
-        IntBuffer ib = segment.readData(bf);
-        return new RawData(segment, ib);
-    }
-
-    private static BufferedImage createBufferedImage(RawData rawData, BiasCorrection bc, long[] globalScale) throws IOException {
+    private static BufferedImage createBufferedImage(RawData rawData, BiasCorrection bc, long[] globalScale) {
         IntBuffer intBuffer = rawData.asIntBuffer();
         Segment segment = rawData.getSegment();
         Rectangle datasec = segment.getDataSec();
