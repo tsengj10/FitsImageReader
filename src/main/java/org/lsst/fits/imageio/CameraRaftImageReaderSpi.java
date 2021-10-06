@@ -1,5 +1,6 @@
 package org.lsst.fits.imageio;
 
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.Locale;
 import javax.imageio.ImageReader;
@@ -21,7 +22,7 @@ public class CameraRaftImageReaderSpi extends ImageReaderSpi {
 
     @Override
     public boolean canDecodeInput(Object source) throws IOException {
-        return (source instanceof ImageInputStream);
+        return (source instanceof FileInputStream);
     }
 
     @Override

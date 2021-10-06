@@ -25,6 +25,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.imageio.stream.ImageInputStream;
 import nom.tam.fits.FitsException;
@@ -35,14 +37,19 @@ import org.lsst.fits.imageio.bias.BiasCorrection;
 import org.lsst.fits.imageio.cmap.RGBColorMap;
 
 /**
- *
+ * This is the main component of the camera image reader. It makes extensive use of Caffeine caching library
+ * to deal with thread safety and performance issues when several clients are attempting to read overlapping
+ * segments of a single image at the same time.
  * @author tonyj
  */
 public class CachingReader {
 
-    private final AsyncLoadingCache<MultiKey3<File, Character, Map<String, Map<String, Object>>>, List<Segment>> segmentCache;
+    private final AsyncLoadingCache<MultiKey3<String, Character, Map<String, Map<String, Object>>>, List<Segment>> segmentCache;
     private final AsyncLoadingCache<Segment, RawData> rawDataCache;
     private final AsyncLoadingCache<MultiKey3<Segment, BiasCorrection, long[]>, BufferedImage> bufferedImageCache;
+    /**
+     * Caches the lines read from the ImageInputStream
+     */
     private final LoadingCache<ImageInputStream, List<String>> linesCache;
 
     private static final Logger LOG = Logger.getLogger(CachingReader.class.getName());
@@ -52,9 +59,9 @@ public class CachingReader {
         segmentCache = Caffeine.newBuilder()
                 .maximumSize(Integer.getInteger("org.lsst.fits.imageio.segmentCacheSize", 10_000))
                 .recordStats()
-                .buildAsync((MultiKey3<File, Character, Map<String, Map<String, Object>>> key) -> {
+                .buildAsync((MultiKey3<String, Character, Map<String, Map<String, Object>>> key) -> {
                     return Timed.execute(() -> {
-                        return readSegments(key.getKey1(), key.getKey2(), key.getKey3());
+                        return readSegment(key.getKey1(), key.getKey2(), key.getKey3());
                     }, "Loading %s took %dms", key.getKey1());
                 });
 
@@ -104,7 +111,7 @@ public class CachingReader {
     }
 
     void report() {
-        LoadingCache<MultiKey3<File, Character, Map<String, Map<String, Object>>>, List<Segment>> s1 = segmentCache.synchronous();
+        LoadingCache<MultiKey3<String, Character, Map<String, Map<String, Object>>>, List<Segment>> s1 = segmentCache.synchronous();
         LOG.log(Level.INFO, "segment Cache size {0} stats {1}", new Object[]{s1.estimatedSize(), s1.stats()});
         LoadingCache<Segment, RawData> s2 = rawDataCache.synchronous();
         LOG.log(Level.INFO, "rawData Cache size {0} stats {1}", new Object[]{s2.estimatedSize(), s2.stats()});
@@ -123,7 +130,7 @@ public class CachingReader {
             Queue<CompletableFuture<Void>> segmentsCompletables = new ConcurrentLinkedQueue<>();
             Queue<CompletableFuture<Void>> bufferedImageCompletables = new ConcurrentLinkedQueue<>();
             List<String> lines = linesCache.get(fileInput);
-            lines.stream().map((line) -> segmentCache.get(new MultiKey3<>(new File(line), wcsLetter, wcsOverride))).forEach((CompletableFuture<List<Segment>> futureSegments) -> {
+            lines.stream().map((line) -> segmentCache.get(new MultiKey3<>(line, wcsLetter, wcsOverride))).forEach((CompletableFuture<List<Segment>> futureSegments) -> {
                 segmentsCompletables.add(futureSegments.thenAccept((List<Segment> segments) -> {
                     List<Segment> segmentsToRead = computeSegmentsToRead(segments, sourceRegion);
                     segmentsToRead.stream().forEach((Segment segment) -> {
@@ -177,7 +184,34 @@ public class CachingReader {
         }
     }
 
-    private static List<Segment> readSegments(File file, char wcsLetter, Map<String, Map<String, Object>> wcsOverride) throws IOException, TruncatedFileException, FitsException {
+    private static List<Segment> readSegment(String line, char wcsLetter, Map<String, Map<String, Object>> wcsOverride) throws IOException, TruncatedFileException, FitsException {
+        if (line.startsWith("DAQ:")) {
+            return readDAQSegment(line, wcsLetter, wcsOverride);
+        } else {
+            return readFitsFileSegment(new File(line), wcsLetter, wcsOverride);
+        }
+    }
+    
+    private static List<Segment> readDAQSegment(String line, char wcsLetter, Map<String, Map<String, Object>> wcsOverride) throws IOException {
+        // We can't read one segment from the DAQ, rather we have to read the raw data for an entire REB, and then extract the segments from that.
+        // DAQ:camera:raw/MC_C_20210206_000109:R00/RebG
+        Pattern pattern = Pattern.compile("DAQ:(\\w+):(\\w+)/(\\w+):(\\w+)/(\\w+)");
+        Matcher matcher = pattern.matcher(line);
+        if (!matcher.matches()) {
+            throw new IOException("Illegal image segment descriptor "+line);
+        } else {
+            String partition = matcher.group(1);
+            String folder = matcher.group(2);
+            String imageName = matcher.group(3);
+            String raftName = matcher.group(4);
+            String rebName = matcher.group(5);
+            // Note, we don't actually need to read any data at this moment, we just need to return information about the amplifier location
+            // Given focalplanegeometry, raftName, rebName, wcsLetter I would like to get back an  
+            throw new IOException("Unsupported operation exception: "+line);
+        }
+    }
+    
+    private static List<Segment> readFitsFileSegment(File file, char wcsLetter, Map<String, Map<String, Object>> wcsOverride) throws IOException, TruncatedFileException, FitsException {
         List<Segment> result = new ArrayList<>();
         String ccdSlot = null;
         String raftSlot = null;
@@ -273,7 +307,7 @@ public class CachingReader {
         List<Segment> result = new ArrayList<>();
         List<String> lines = linesCache.get(in);
         for (String line : lines) {
-            result.addAll((List<Segment>) (segmentCache.get(new MultiKey3<>(new File(line), 'Q', null)).get()));
+            result.addAll((List<Segment>) (segmentCache.get(new MultiKey3<>(line, 'Q', null)).get()));
         }
         return result;
     }

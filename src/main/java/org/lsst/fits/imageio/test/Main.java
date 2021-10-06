@@ -1,9 +1,7 @@
 package org.lsst.fits.imageio.test;
 
 import java.awt.Dimension;
-import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
-import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.Iterator;
@@ -32,7 +30,7 @@ public class Main {
 
     private ImageReader reader;
     private FITSImageReadParam readParam;
-    private ImageComponent ic;
+    private ImageReaderComponent ic;
     private static final Logger LOG = Logger.getLogger(Main.class.getName());
 
     public static void main(String[] args) throws IOException, UnsupportedLookAndFeelException, ClassNotFoundException, InstantiationException, IllegalAccessException {
@@ -44,7 +42,7 @@ public class Main {
     private void start(String file) throws IOException {
         //BufferedImage image1 = Timed.execute(()-> ImageIO.read(new File(args[0])), "Reading took %dms");  
         //System.out.println("I got an image!" + image1);
-        BufferedImage bi = open(new File(file));
+        ImageReader reader = open(new File(file));
         //sun.java2d.loops.GraphicsPrimitiveMgr.main(new String[1]);
         //ImageIO.write(image, "TIFF", new File("/home/tonyj/Data/mega.tiff"));
 
@@ -53,7 +51,7 @@ public class Main {
         menuBar.add(createColorMenu());
         menuBar.add(createBiasMenu());
         menuBar.add(createOverscanMenu());
-        ic = new ImageComponent(true, bi);
+        ic = new ImageReaderComponent(true, reader);
         SwingUtilities.invokeLater(() -> {
             JFrame frame = new JFrame();
             frame.setJMenuBar(menuBar);
@@ -65,22 +63,22 @@ public class Main {
 
     }
 
-    private BufferedImage open(File file) throws IOException {
+    private ImageReader open(File file) throws IOException {
         int pos_suffix = file.getName().lastIndexOf('.');
         String suffix = file.getName().substring(pos_suffix);
         Iterator<ImageReader> imageReadersByFormatName = ImageIO.getImageReadersBySuffix(suffix);
         reader = imageReadersByFormatName.next();
         readParam = (FITSImageReadParam) reader.getDefaultReadParam();
-        if (suffix.equals(".fp")) {
-            readParam.setSourceSubsampling(8, 8, 0, 0);
-            readParam.setWCSString('E');
-        }
+//        if (suffix.equals(".fp")) {
+//            readParam.setSourceSubsampling(8, 8, 0, 0);
+//            readParam.setWCSString('E');
+//        }
         //readParam.setSourceRegion(new Rectangle(1000,10,256,256));
         //readParam.setColorMap(new SAOColorMap(256, "cubehelix00.sao"));
         reader.setInput(ImageIO.createImageInputStream(file));
-        BufferedImage image1 = reader.read(0, readParam);
-        System.out.println("I got an image!" + image1);
-        return image1;
+        //BufferedImage image1 = reader.read(0, readParam);
+        //System.out.println("I got an image!" + image1);
+        return reader;
     }
 
     private JMenu createFileMenu() {
@@ -123,10 +121,9 @@ public class Main {
             });
             int rc = chooser.showOpenDialog(ic);
             if (rc == JFileChooser.APPROVE_OPTION) {
-                BufferedImage bi;
                 try {
-                    bi = open(chooser.getSelectedFile());
-                    ic.setImage(bi);
+                    reader = open(chooser.getSelectedFile());
+                    ic.setImageReader(reader);
                 } catch (IOException ex) {
                     LOG.log(Level.SEVERE, "Unable to open file", ex);
                 }
@@ -188,8 +185,7 @@ public class Main {
     private void refresh() {
 
         try {
-            BufferedImage image1 = reader.read(0, readParam);
-            ic.setImage(image1);
+            ic.setImageReader(reader);
         } catch (IOException ex) {
             Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
         }

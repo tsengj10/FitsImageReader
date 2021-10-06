@@ -41,6 +41,11 @@
             <version>5.3.1</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>org-lsst-ccs-image-utilities</artifactId>
+            <version>3.1.9</version>
+        </dependency>
     </dependencies>
     <description>FITS image reader for use with cantaloupe.</description>
     <build>
