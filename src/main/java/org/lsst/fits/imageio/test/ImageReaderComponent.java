@@ -32,13 +32,13 @@ public final class ImageReaderComponent extends JComponent {
     private float scale = 1;
     private ImageReader reader;
     private float minScale = 0;
-    private final float maxScale = 1;
+    private final float maxScale = 10;
     private JScrollPane scroll;
     private boolean zoomScaleSet = false;
     private int imageHeight;
     private int imageWidth;
     private BufferedImage bi;
-    private volatile boolean bufferedImageIsUpToDate = false;
+    private ImageReadParam param;
 
     public ImageReaderComponent() {
         this(false);
@@ -66,9 +66,9 @@ public final class ImageReaderComponent extends JComponent {
         });
     }
 
-    public ImageReaderComponent(boolean zoomPan, ImageReader image) throws IOException {
+    public ImageReaderComponent(boolean zoomPan, ImageReader image, ImageReadParam param) throws IOException {
         this(zoomPan);
-        setImageReader(image);
+        setImageReader(image, param);
     }
 
     @Override
@@ -81,8 +81,9 @@ public final class ImageReaderComponent extends JComponent {
         return size;
     }
 
-    final void setImageReader(ImageReader image) throws IOException {
+    final void setImageReader(ImageReader image, ImageReadParam param) throws IOException {
         this.reader = image;
+        this.param = param;
         this.imageHeight = image.getHeight(0);
         this.imageWidth = image.getWidth(0);
         this.zoomScaleSet = false;
@@ -100,6 +101,11 @@ public final class ImageReaderComponent extends JComponent {
 
     ImageReader getImage() {
         return reader;
+    }
+
+    Point getImagePosition(Point point) {
+        Rectangle visibleRect = scroll.getViewport().getVisibleRect();
+        return new Point(Math.round(visibleRect.x + point.x / scale), Math.round(imageHeight - visibleRect.y - point.y / scale));
     }
 
     private final class Inner extends JComponent {
@@ -132,7 +138,11 @@ public final class ImageReaderComponent extends JComponent {
                     } else {
                         zoom(e.getPoint(), 0.9f);
                     }
+                }
 
+                @Override
+                public void mouseMoved(MouseEvent e) {
+                    ImageReaderComponent.this.dispatchEvent(e);
                 }
             };
 
@@ -153,7 +163,6 @@ public final class ImageReaderComponent extends JComponent {
             float newY = pos.y - shiftNeeded.y * scale;
             final Point newPos = new Point(Math.round(newX), Math.round(newY));
             scroll.getViewport().setViewPosition(newPos);
-            bufferedImageIsUpToDate = false;
             revalidate();
             repaint();
         }
@@ -172,37 +181,34 @@ public final class ImageReaderComponent extends JComponent {
         @Override
         protected void paintComponent(Graphics g) {
             if (reader != null) {
-                if (!bufferedImageIsUpToDate) {
-                    Graphics2D g2 = (Graphics2D) g;
-                    AffineTransform at = new AffineTransform();
-                    at.scale(1, -1);
-                    at.translate(0, -getHeight());
-                    at.scale(scale, scale);
-                    //((Graphics2D) g).drawImage(image, at, this);
-                    ImageReadParam readParam = reader.getDefaultReadParam();
-                    Rectangle sourceRegion = scroll.getViewport().getViewRect();
-                    if (scale != 1.0) {
-                        double factor = 1.0 / scale;
-                        sourceRegion.x *= factor;
-                        sourceRegion.y *= factor;
-                        sourceRegion.width *= factor;
-                        sourceRegion.height *= factor;
-                    }
-                    int subSamplingX = (int) Math.max(1, Math.floor(imageWidth / sourceRegion.width));
-                    int subSamplingY = (int) Math.max(1, Math.floor(imageHeight / sourceRegion.height));
-                    System.out.printf("%s %s %s %d %d\n", g2.getClipBounds(), scale, sourceRegion, subSamplingX, subSamplingY);
+                Graphics2D g2 = (Graphics2D) g;
+                AffineTransform at = new AffineTransform();
+                at.scale(1, -1);
+                at.translate(0, -getHeight());
+                at.scale(scale, scale);
+                //((Graphics2D) g).drawImage(image, at, this);
+                Rectangle sourceRegion = scroll.getViewport().getViewRect();
+                if (scale != 1.0) {
+                    double factor = 1.0 / scale;
+                    sourceRegion.x *= factor;
+                    sourceRegion.y *= factor;
+                    sourceRegion.width *= factor;
+                    sourceRegion.height *= factor;
+                }
+                Rectangle viewRect = scroll.getViewport().getViewRect();
+                //System.out.printf("Size: %d %d %s\n", imageWidth, imageHeight, viewRect);
+                int subSamplingX = (int) Math.max(1, Math.floor(sourceRegion.width / viewRect.getWidth()));
+                int subSamplingY = (int) Math.max(1, Math.floor(sourceRegion.height / viewRect.getHeight()));
+                //System.out.printf("%s %s %s %d %d\n", g2.getClipBounds(), scale, sourceRegion, subSamplingX, subSamplingY);
 
-                    readParam.setSourceRegion(sourceRegion);
-                    readParam.setSourceSubsampling(subSamplingX, subSamplingY, 0, 0);
-                    try {
-                        bi = reader.read(0, readParam);
-                        g2.drawImage(bi, 0, 0, getWidth(), getHeight(), this);
-                        bufferedImageIsUpToDate = true;
-                    } catch (IOException ex) {
-                        Logger.getLogger(ImageReaderComponent.class.getName()).log(Level.SEVERE, null, ex);
-                    }
-                } else {
-                    g.drawImage(bi, 0, 0, getWidth(), getHeight(), this);
+                param.setSourceRegion(sourceRegion);
+                param.setSourceSubsampling(subSamplingX, subSamplingY, 0, 0);
+                try {
+                    bi = reader.read(0, param);
+                    //System.out.printf("BufferedImage: %d %d\n", bi.getWidth(), bi.getHeight());
+                    g2.drawImage(bi, viewRect.x, viewRect.y, viewRect.width, viewRect.height, this);
+                } catch (IOException ex) {
+                    Logger.getLogger(ImageReaderComponent.class.getName()).log(Level.SEVERE, null, ex);
                 }
             }
         }

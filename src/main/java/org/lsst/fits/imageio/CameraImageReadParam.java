@@ -8,6 +8,9 @@ import java.util.Set;
 import javax.imageio.ImageReadParam;
 import org.lsst.fits.imageio.bias.BiasCorrection;
 import org.lsst.fits.imageio.bias.SerialParallelBiasCorrection;
+import org.lsst.fits.imageio.bias.SerialParallelBiasSub;
+import org.lsst.fits.imageio.bias.SerialParallelBiasSubtraction;
+import org.lsst.fits.imageio.bias.SerialParallelBiasSubtraction2;
 import org.lsst.fits.imageio.cmap.RGBColorMap;
 import org.lsst.fits.imageio.cmap.SAOColorMap;
 
@@ -15,7 +18,7 @@ import org.lsst.fits.imageio.cmap.SAOColorMap;
  *
  * @author tonyj
  */
-public class FITSImageReadParam extends ImageReadParam {
+public class CameraImageReadParam extends ImageReadParam {
 
     private boolean showBiasRegions = false;
     private final GetSetAvailable<BiasCorrection> bc
@@ -24,6 +27,9 @@ public class FITSImageReadParam extends ImageReadParam {
                 {
                     put("None", CameraImageReader.DEFAULT_BIAS_CORRECTION);
                     put("Simple Overscan Correction", new SerialParallelBiasCorrection());
+                    put("Simple Overscan Subtraction", new SerialParallelBiasSubtraction());
+                    put("Simple Overscan Subtraction2", new SerialParallelBiasSubtraction2());
+                    put("Simple Overscan Subtraction only", new SerialParallelBiasSub());
                 }
             });
     private final GetSetAvailable<RGBColorMap> colorMap
@@ -43,6 +49,9 @@ public class FITSImageReadParam extends ImageReadParam {
     private char wcsString = ' ';
     private long[] globalScale;
     private Map<String, Map<String, Object>> wcsOverride = null;
+    public enum Scale { GLOBAL, AMPLIFIER };
+    private Scale scale = Scale.AMPLIFIER;
+    
     
     public boolean isShowBiasRegions() {
         return showBiasRegions;
@@ -115,6 +124,14 @@ public class FITSImageReadParam extends ImageReadParam {
 
     public void setWCSOverride(Map<String, Map<String, Object>> wcsOverride) {
         this.wcsOverride = wcsOverride;
+    }
+
+    public Scale getScale() {
+        return scale;
+    }
+
+    public void setScale(Scale scale) {
+        this.scale = scale;
     }
 
     private static class GetSetAvailable<T> {

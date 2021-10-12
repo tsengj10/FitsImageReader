@@ -1,7 +1,13 @@
 package org.lsst.fits.imageio.test;
 
+import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.Point;
 import java.awt.event.ActionEvent;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.NoninvertibleTransformException;
 import java.io.File;
 import java.io.IOException;
 import java.util.Iterator;
@@ -16,11 +22,15 @@ import javax.swing.JFrame;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
+import javax.swing.JPanel;
+import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
 import javax.swing.filechooser.FileFilter;
-import org.lsst.fits.imageio.FITSImageReadParam;
+import org.lsst.fits.imageio.CameraImageReadParam;
+import org.lsst.fits.imageio.CameraImageReader;
+import org.lsst.fits.imageio.Segment;
 
 /**
  *
@@ -28,8 +38,8 @@ import org.lsst.fits.imageio.FITSImageReadParam;
  */
 public class Main {
 
-    private ImageReader reader;
-    private FITSImageReadParam readParam;
+    private CameraImageReader reader;
+    private CameraImageReadParam readParam;
     private ImageReaderComponent ic;
     private static final Logger LOG = Logger.getLogger(Main.class.getName());
 
@@ -42,7 +52,7 @@ public class Main {
     private void start(String file) throws IOException {
         //BufferedImage image1 = Timed.execute(()-> ImageIO.read(new File(args[0])), "Reading took %dms");  
         //System.out.println("I got an image!" + image1);
-        ImageReader reader = open(new File(file));
+        CameraImageReader reader = open(new File(file));
         //sun.java2d.loops.GraphicsPrimitiveMgr.main(new String[1]);
         //ImageIO.write(image, "TIFF", new File("/home/tonyj/Data/mega.tiff"));
 
@@ -51,11 +61,43 @@ public class Main {
         menuBar.add(createColorMenu());
         menuBar.add(createBiasMenu());
         menuBar.add(createOverscanMenu());
-        ic = new ImageReaderComponent(true, reader);
+        menuBar.add(createScaleMenu());
+        ic = new ImageReaderComponent(true, reader, readParam);
+        JTextField infoComponent = new JTextField("Info");
+        infoComponent.setEditable(false);
+        JPanel contentPanel = new JPanel();
+        contentPanel.setLayout(new BorderLayout());
+        contentPanel.add(ic, BorderLayout.CENTER);
+        contentPanel.add(infoComponent, BorderLayout.SOUTH);
+        ic.addMouseMotionListener(new MouseMotionAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                Point ip = ic.getImagePosition(e.getPoint());
+                StringBuilder builder = new StringBuilder();
+                builder.append("x=").append(ip.x).append(" y=").append(ip.y);
+                Segment segment = Main.this.reader.getImageMetaDataForPoint(ip.x, ip.y);
+                if (segment != null) {
+                    try {
+                        builder.append(" ").append(segment.getRaftBay()).append(" ").append(segment.getCcdSlot()).append(" ").append(segment.getSegmentName());
+                        AffineTransform wcsTranslation = segment.getWCSTranslation(false);
+                        AffineTransform inverse = wcsTranslation.createInverse();
+                        inverse.transform(ip, ip);
+                        builder.append(" x=").append(ip.x).append(" y=").append(ip.y);
+                        int pixel = Main.this.reader.getPixelForSegment(segment, ip.x, ip.y);
+                        builder.append(" pixel=").append(pixel);
+                        int rgb = Main.this.reader.getRGBForSegment(segment, ip.x, ip.y);
+                        builder.append(" rgb=").append(Integer.toHexString(rgb));
+                    } catch (NoninvertibleTransformException ex) {
+                        Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                }
+                infoComponent.setText(builder.toString());
+            }
+        });
         SwingUtilities.invokeLater(() -> {
             JFrame frame = new JFrame();
             frame.setJMenuBar(menuBar);
-            frame.add(ic);
+            frame.setContentPane(contentPanel);
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             frame.setSize(new Dimension(600, 600));
             frame.setVisible(true);
@@ -63,12 +105,19 @@ public class Main {
 
     }
 
-    private ImageReader open(File file) throws IOException {
+    private CameraImageReader open(File file) throws IOException {
         int pos_suffix = file.getName().lastIndexOf('.');
         String suffix = file.getName().substring(pos_suffix);
         Iterator<ImageReader> imageReadersByFormatName = ImageIO.getImageReadersBySuffix(suffix);
-        reader = imageReadersByFormatName.next();
-        readParam = (FITSImageReadParam) reader.getDefaultReadParam();
+        reader = (CameraImageReader) imageReadersByFormatName.next();
+        CameraImageReadParam newReadParam = (CameraImageReadParam) reader.getDefaultReadParam();
+        if (readParam != null) {
+            newReadParam.setColorMap(this.readParam.getColorMap());
+            newReadParam.setBiasCorrection(this.readParam.getBiasCorrection());
+            newReadParam.setScale(this.readParam.getScale());
+            newReadParam.setShowBiasRegions(this.readParam.isShowBiasRegions());
+        }
+        this.readParam = newReadParam;
 //        if (suffix.equals(".fp")) {
 //            readParam.setSourceSubsampling(8, 8, 0, 0);
 //            readParam.setWCSString('E');
@@ -123,7 +172,7 @@ public class Main {
             if (rc == JFileChooser.APPROVE_OPTION) {
                 try {
                     reader = open(chooser.getSelectedFile());
-                    ic.setImageReader(reader);
+                    ic.setImageReader(reader, readParam);
                 } catch (IOException ex) {
                     LOG.log(Level.SEVERE, "Unable to open file", ex);
                 }
@@ -182,10 +231,22 @@ public class Main {
         return colorMenu;
     }
 
+    private JMenu createScaleMenu() {
+        JMenu scaleMenu = new JMenu("Scale");
+        JCheckBoxMenuItem global = new JCheckBoxMenuItem("Global");
+        global.setSelected(readParam.getScale() == CameraImageReadParam.Scale.GLOBAL);
+        global.addActionListener((ActionEvent e) -> {
+            readParam.setScale(global.isSelected() ? CameraImageReadParam.Scale.GLOBAL : CameraImageReadParam.Scale.AMPLIFIER);
+            refresh();
+        });
+        scaleMenu.add(global);
+        return scaleMenu;
+    }
+
     private void refresh() {
 
         try {
-            ic.setImageReader(reader);
+            ic.setImageReader(reader, readParam);
         } catch (IOException ex) {
             Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
         }

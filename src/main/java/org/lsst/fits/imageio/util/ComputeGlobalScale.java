@@ -24,7 +24,7 @@ public class ComputeGlobalScale {
         CachingReader reader = new CachingReader();
         File file = new File(args[0]);
         ImageInputStream in = new FileImageInputStream(file);
-        List<Segment> segments = reader.readSegments(in);
+        List<Segment> segments = reader.readSegments(in, 'Q');
         long[] count = new long[1 << 18];
         for(Segment segment : segments) {
             RawData rawData = reader.getRawData(segment);

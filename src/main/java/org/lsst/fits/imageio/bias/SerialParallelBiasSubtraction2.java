@@ -15,7 +15,9 @@ import org.lsst.fits.imageio.Segment;
  *
  * @author tonyj
  */
-public class SerialParallelBiasCorrection implements BiasCorrection {
+public class SerialParallelBiasSubtraction2 implements BiasCorrection {
+
+    private final int targetBiasLevel = 20000;
 
     @Override
     public CorrectionFactors compute(IntBuffer data, Segment segment) {
@@ -26,7 +28,7 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
 
         // Deal with serial overscan
         int[] serialBias = new int[datasec.height];
-        int minSerialBias = 999999;
+        int averageSerialBias = 0;
         int serialOverscanStart = datasec.x + datasec.width + 4;
         int position = 0;
         for (int y = datasec.y; y < datasec.height + datasec.y; y++) {
@@ -36,57 +38,70 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
             }
             biasSum /= nAxis1 - serialOverscanStart;
             serialBias[y - datasec.y] = biasSum;
-            minSerialBias = Math.min(minSerialBias, biasSum);
+            averageSerialBias += biasSum;
             position += nAxis1;
         }
+        averageSerialBias /= datasec.height;
         for (int i = 0; i < serialBias.length; i++) {
-            serialBias[i] -= minSerialBias;
+            serialBias[i] -= averageSerialBias;
         }
 
         // Deal with parallel overscan
         int[] parallelBias = new int[datasec.width];
-        int minParallelBias = 999999;
+        int averageParallelBias = 0;
 
         int parallelOverscanStart = datasec.y + datasec.height + 4;
 
+        int prevBiasSum = 22000;
         for (int x = datasec.x; x < datasec.width + datasec.x; x++) {
             int biasSum = 0;
             for (int y = parallelOverscanStart; y < nAxis2; y++) {
                 biasSum += data.get(x + y * nAxis1);
             }
             biasSum /= nAxis2 - parallelOverscanStart;
+            // protect against outliers
+            if (biasSum > 100000) {
+                biasSum = prevBiasSum;
+            }
             parallelBias[x - datasec.x] = biasSum;
-            minParallelBias = Math.min(minParallelBias, biasSum);
+            averageParallelBias += biasSum;
             position += nAxis1;
+            prevBiasSum = biasSum;
         }
+        averageParallelBias /= datasec.width;
         for (int i = 0; i < parallelBias.length; i++) {
-            parallelBias[i] -= minParallelBias;
+            parallelBias[i] -= averageParallelBias;
         }
 
-        return new SimpleCorrectionFactors(datasec, serialBias, parallelBias);
+        int overallCorrection = targetBiasLevel - (averageSerialBias*datasec.height + averageParallelBias*datasec.width) / (datasec.height + datasec.width);
+        final SimpleCorrectionFactors simpleCorrectionFactors = new SimpleCorrectionFactors(datasec, overallCorrection, serialBias, parallelBias);
+        return simpleCorrectionFactors;
     }
 
     @Override
     public boolean equals(Object obj) {
-        return obj != null && SerialParallelBiasCorrection.class.equals(obj.getClass());
+        return obj != null && SerialParallelBiasSubtraction.class.equals(obj.getClass());
     }
 
     @Override
     public int hashCode() {
-        return SerialParallelBiasCorrection.class.hashCode();
+        return SerialParallelBiasSubtraction2.class.hashCode();
     }
 
     public static void main(String[] args) throws IOException, TruncatedFileException, FitsException {
-        File file = new File("/home/tonyj/Data/pretty/11_Flat_screen_0000_20190322172301.fits");
+        File file = new File("/home/tonyj/Data/pretty/20_Flat_screen_0000_20190322172301.fits");
         BufferedFile bf = new BufferedFile(file, "r");
         @SuppressWarnings("UnusedAssignment")
         Header header = new Header(bf); // Skip primary header
+        for (int i = 0; i < 11; i++) {
+            header = new Header(bf);
+            bf.seek(bf.getFilePointer() + header.getDataSize());
+        }
         header = new Header(bf);
-
-        Segment segment = new Segment(header, file, bf, "R22", "S11", 'Q', null);
+        Segment segment = new Segment(header, file, bf, "R22", "S20", '4', null);
         IntBuffer intBuffer = segment.readRawDataAsync(null).join().asIntBuffer();
 
-        BiasCorrection bc = new SerialParallelBiasCorrection();
+        BiasCorrection bc = new SerialParallelBiasSubtraction2();
         CorrectionFactors factors = bc.compute(intBuffer, segment);
         System.out.println(factors);
     }
@@ -96,21 +111,27 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
         private final Rectangle datasec;
         private final int[] serialBias;
         private final int[] parallelBias;
+        private final int overallCorrection;
 
-        private SimpleCorrectionFactors(Rectangle datasec, int[] serialBias, int[] parallelBias) {
+        private SimpleCorrectionFactors(Rectangle datasec, int overallCorrection, int[] serialBias, int[] parallelBias) {
             this.datasec = datasec;
             this.serialBias = serialBias;
             this.parallelBias = parallelBias;
+            this.overallCorrection = overallCorrection;
         }
 
         @Override
         public int correctionFactor(int x, int y) {
-            return serialBias[y - datasec.y] + parallelBias[x - datasec.x];
+            return -overallCorrection + serialBias[y - datasec.y] + parallelBias[x - datasec.x];
         }
 
         @Override
         public String toString() {
-            return "CorrectionFactors{" + "datasec=" + datasec + ", serialBias=" + Arrays.toString(serialBias) + ", parallelBias=" + Arrays.toString(parallelBias) + '}';
+            double sAvg = Arrays.stream(serialBias).average().getAsDouble();
+            double pAvg = Arrays.stream(parallelBias).average().getAsDouble();
+
+            return "SimpleCorrectionFactors{" + "savg=" + sAvg + ", pavg="+ pAvg + ", datasec=" + datasec + ", serialBias=" + Arrays.toString(serialBias) + ", parallelBias=" + Arrays.toString(parallelBias) + ", overallCorrection=" + overallCorrection + '}';
         }
+
     }
 }

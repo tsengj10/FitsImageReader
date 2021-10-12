@@ -63,12 +63,18 @@ public class Segment {
     private final int cAxis2;
     private final int zTile1;
     private final int zTile2;
+    private final String segmentName;
+    private final String raftBay;
+    private final String ccdSlot;
 
-    public Segment(Header header, File file, BufferedFile bf, String ccdSlot, char wcsLetter, Map<String, Object> wcsOverride) throws IOException, FitsException {
+    public Segment(Header header, File file, BufferedFile bf, String raftBay, String ccdSlot, char wcsLetter, Map<String, Object> wcsOverride) throws IOException, FitsException {
         this.file = file;
         this.seekPosition = bf.getFilePointer();
         this.wcsLetter = wcsLetter;
+        this.raftBay = raftBay;
+        this.ccdSlot = ccdSlot;
         isCompressed = header.getBooleanValue("ZIMAGE");
+        segmentName = header.getStringValue("EXTNAME");
         if (isCompressed) {
             // Note, nom,tam.fits has support for many/all compression types, 
             // but performance for the way we are trying to use it leaves much
@@ -288,9 +294,21 @@ public class Segment {
         return wcs.intersects(sourceRegion);
     }
 
+    public String getSegmentName() {
+        return segmentName;
+    }
+
+    public String getRaftBay() {
+        return raftBay;
+    }
+
+    public String getCcdSlot() {
+        return ccdSlot;
+    }
+    
     @Override
     public String toString() {
-        return "Segment{" + "file=" + file + ", seekPosition=" + seekPosition + ", wcsLetter=" + wcsLetter + '}';
+        return "Segment{" + "file=" + file + ", name=" + segmentName + ", raftBay=" + raftBay + ", ccdSlot=" + ccdSlot + '}';
     }
 
     @Override

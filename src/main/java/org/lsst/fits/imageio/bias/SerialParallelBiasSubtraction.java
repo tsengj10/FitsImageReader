@@ -15,7 +15,9 @@ import org.lsst.fits.imageio.Segment;
  *
  * @author tonyj
  */
-public class SerialParallelBiasCorrection implements BiasCorrection {
+public class SerialParallelBiasSubtraction implements BiasCorrection {
+    
+    private final int targetBiasLevel = 20000;
 
     @Override
     public CorrectionFactors compute(IntBuffer data, Segment segment) {
@@ -26,7 +28,7 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
 
         // Deal with serial overscan
         int[] serialBias = new int[datasec.height];
-        int minSerialBias = 999999;
+        int averageSerialBias = 0;
         int serialOverscanStart = datasec.x + datasec.width + 4;
         int position = 0;
         for (int y = datasec.y; y < datasec.height + datasec.y; y++) {
@@ -36,11 +38,12 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
             }
             biasSum /= nAxis1 - serialOverscanStart;
             serialBias[y - datasec.y] = biasSum;
-            minSerialBias = Math.min(minSerialBias, biasSum);
+            averageSerialBias += biasSum;
             position += nAxis1;
         }
+        averageSerialBias /= datasec.height;
         for (int i = 0; i < serialBias.length; i++) {
-            serialBias[i] -= minSerialBias;
+            serialBias[i] -= targetBiasLevel;
         }
 
         // Deal with parallel overscan
@@ -68,12 +71,12 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
 
     @Override
     public boolean equals(Object obj) {
-        return obj != null && SerialParallelBiasCorrection.class.equals(obj.getClass());
+        return obj != null && SerialParallelBiasSubtraction.class.equals(obj.getClass());
     }
 
     @Override
     public int hashCode() {
-        return SerialParallelBiasCorrection.class.hashCode();
+        return SerialParallelBiasSubtraction.class.hashCode();
     }
 
     public static void main(String[] args) throws IOException, TruncatedFileException, FitsException {
@@ -86,7 +89,7 @@ public class SerialParallelBiasCorrection implements BiasCorrection {
         Segment segment = new Segment(header, file, bf, "R22", "S11", 'Q', null);
         IntBuffer intBuffer = segment.readRawDataAsync(null).join().asIntBuffer();
 
-        BiasCorrection bc = new SerialParallelBiasCorrection();
+        BiasCorrection bc = new SerialParallelBiasSubtraction();
         CorrectionFactors factors = bc.compute(intBuffer, segment);
         System.out.println(factors);
     }
