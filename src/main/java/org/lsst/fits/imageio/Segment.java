@@ -294,6 +294,10 @@ public class Segment {
         return wcs.intersects(sourceRegion);
     }
 
+    public Rectangle2D.Double getWcs() {
+        return wcs;
+    }
+
     public String getSegmentName() {
         return segmentName;
     }

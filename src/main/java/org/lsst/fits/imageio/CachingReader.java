@@ -34,6 +34,7 @@ import nom.tam.fits.Header;
 import nom.tam.fits.TruncatedFileException;
 import nom.tam.util.BufferedFile;
 import org.lsst.fits.imageio.bias.BiasCorrection;
+import org.lsst.fits.imageio.bias.BiasCorrection.CorrectionFactors;
 import org.lsst.fits.imageio.cmap.RGBColorMap;
 
 /**
@@ -52,6 +53,7 @@ public class CachingReader {
     // values to compute the hash.
     private final AsyncLoadingCache<MultiKey3<Segment, BiasCorrection, long[]>, BufferedImage> bufferedImageCache;
     private final AsyncLoadingCache<MultiKey<List<Segment>, BiasCorrection>, long[]> globalScalingCache;
+    private final AsyncLoadingCache<MultiKey<Segment, BiasCorrection>, CorrectionFactors> biasCorrectionCache;
 
     /**
      * Caches the lines read from the ImageInputStream
@@ -76,14 +78,27 @@ public class CachingReader {
                 .recordStats()
                 .buildAsync((Segment segment, Executor executor) -> segment.readRawDataAsync(executor));
 
+        biasCorrectionCache = Caffeine.newBuilder()
+                .maximumSize(Integer.getInteger("org.lsst.fits.imageio.biasCorrectionCacheSize", 10_000))
+                .recordStats()
+                .buildAsync((MultiKey<Segment, BiasCorrection> key, Executor executor) -> {
+                    Segment segment = key.getKey1();
+                    return rawDataCache.get(segment).thenApply(rawData -> {
+                        BiasCorrection bc = key.getKey2();
+                        return bc.compute(rawData.asIntBuffer(), segment);
+                    });
+                });
+
         bufferedImageCache = Caffeine.newBuilder()
                 .maximumSize(Integer.getInteger("org.lsst.fits.imageio.bufferedImageCacheSize", 10_000))
                 .recordStats()
                 .buildAsync((MultiKey3<Segment, BiasCorrection, long[]> key, Executor executor) -> {
                     return rawDataCache.get(key.getKey1()).thenApply(rawData -> {
-                        return Timed.execute(() -> {
-                            return createBufferedImage(rawData, key.getKey2(), key.getKey3());
-                        }, "Loading buffered image for segment %s took %dms", key.getKey1());
+                        return biasCorrectionCache.get(new MultiKey<Segment, BiasCorrection>(key.getKey1(), key.getKey2())).thenApply(factors -> {
+                            return Timed.execute(() -> {
+                                return createBufferedImage(rawData, factors, key.getKey3());
+                            }, "Loading buffered image for segment %s took %dms", key.getKey1());
+                        }).join();
                     });
                 });
 
@@ -94,6 +109,7 @@ public class CachingReader {
                     List<CompletableFuture<ScalingUtils>> histograms = new ArrayList<>();
                     for (Segment segment : key.getKey1()) {
                         histograms.add(rawDataCache.get(segment).thenApply((rawData) -> {
+                            // TODO: use the cache!
                             BiasCorrection biasCorrection = key.getKey2();
                             IntBuffer intData = rawData.asIntBuffer();
                             BiasCorrection.CorrectionFactors correctionFactors = biasCorrection.compute(intData, segment);
@@ -156,6 +172,8 @@ public class CachingReader {
         LOG.log(Level.INFO, "bufferedImage Cache size {0} stats {1}", new Object[]{s3.estimatedSize(), s3.stats()});
         LoadingCache<MultiKey<List<Segment>, BiasCorrection>, long[]> s4 = globalScalingCache.synchronous();
         LOG.log(Level.INFO, "globalScaling Cache size {0} stats {1}", new Object[]{s4.estimatedSize(), s4.stats()});
+        LoadingCache<MultiKey<Segment, BiasCorrection>, CorrectionFactors> s5 = biasCorrectionCache.synchronous();
+        LOG.log(Level.INFO, "biasCorrection Cache size {0} stats {1}", new Object[]{s5.estimatedSize(), s5.stats()});
     }
 
     int preReadImage(ImageInputStream fileInput) {
@@ -226,8 +244,8 @@ public class CachingReader {
                 }));
             });
             LOG.log(Level.INFO, "Waiting for {0} files", segmentsCompletables.size());
-            CompletableFuture.allOf(segmentsCompletables.toArray(new CompletableFuture[segmentsCompletables.size()])).join();                
-            
+            CompletableFuture.allOf(segmentsCompletables.toArray(new CompletableFuture[segmentsCompletables.size()])).join();
+
             globalScaleCompletable.add(globalScalingCache.get(new MultiKey<>(allSegments, bc)).thenAccept((long[] globalScale) -> {
                 List<Segment> segmentsToRead = computeSegmentsToRead(allSegments, sourceRegion);
                 segmentsToRead.stream().forEach((Segment segment) -> {
@@ -351,16 +369,15 @@ public class CachingReader {
         return result;
     }
 
-    private static BufferedImage createBufferedImage(RawData rawData, BiasCorrection bc, long[] globalScale) {
+    private static BufferedImage createBufferedImage(RawData rawData, CorrectionFactors factors, long[] globalScale) {
         IntBuffer intBuffer = rawData.asIntBuffer();
         Segment segment = rawData.getSegment();
         Rectangle datasec = segment.getDataSec();
         // Apply bias correction
-        BiasCorrection.CorrectionFactors factors = bc.compute(intBuffer, segment);
         ScalingUtils su;
         if (globalScale != null) {
             su = new ScalingUtils(globalScale);
-            LOG.log(Level.INFO, "Global scale max"+su.getHighestOccupiedBin());
+            LOG.log(Level.FINE, "Global scale max {0}", su.getHighestOccupiedBin());
         } else {
             su = histogram(datasec, intBuffer, segment, factors);
         }
@@ -429,36 +446,40 @@ public class CachingReader {
         return new ScalingUtils(count);
     }
 
-    public List<Segment> readSegments(ImageInputStream in, char wcsLetter) throws InterruptedException, ExecutionException {
+    public List<Segment> readSegments(ImageInputStream in, char wcsLetter) {
         List<Segment> result = new ArrayList<>();
         List<String> lines = linesCache.get(in);
         for (String line : lines) {
-            result.addAll((List<Segment>) (segmentCache.get(new MultiKey3<>(line, wcsLetter, null)).get()));
+            result.addAll((List<Segment>) (segmentCache.get(new MultiKey3<>(line, wcsLetter, null)).join()));
         }
         return result;
     }
 
-    public RawData getRawData(Segment segment) throws InterruptedException, ExecutionException {
-        return rawDataCache.get(segment).get();
+    public RawData getRawData(Segment segment) {
+        return rawDataCache.get(segment).join();
     }
 
-    public BufferedImage getBufferedImage(Segment segment, BiasCorrection bc, long[] globalScale) throws InterruptedException, ExecutionException {
+    BufferedImage getBufferedImage(Segment segment, BiasCorrection bc, long[] globalScale) {
         final MultiKey3<Segment, BiasCorrection, long[]> multiKey3 = new MultiKey3<>(segment, bc, globalScale);
         CompletableFuture<BufferedImage> fi = bufferedImageCache.get(multiKey3);
-        return fi.get();
+        return fi.join();
     }
-    
-    public long[] getGlobalScale(ImageInputStream fileInput, BiasCorrection bc, char wcsLetter, Map<String, Map<String, Object>> wcsOverride) throws InterruptedException, ExecutionException {
-            Queue<CompletableFuture<Void>> segmentsCompletables = new ConcurrentLinkedQueue<>();
-            List<String> lines = linesCache.get(fileInput);
-            List<Segment> allSegments = new ArrayList<>();
-            lines.stream().map((line) -> segmentCache.get(new MultiKey3<>(line, wcsLetter, wcsOverride))).forEach((CompletableFuture<List<Segment>> futureSegments) -> {
-                segmentsCompletables.add(futureSegments.thenAccept((List<Segment> segments) -> {
-                    allSegments.addAll(segments);
-                }));
-            });
-            CompletableFuture.allOf(segmentsCompletables.toArray(new CompletableFuture[segmentsCompletables.size()])).join();                
-            
-            return globalScalingCache.get(new MultiKey<>(allSegments, bc)).get();
+
+    long[] getGlobalScale(ImageInputStream fileInput, BiasCorrection bc, char wcsLetter, Map<String, Map<String, Object>> wcsOverride) {
+        Queue<CompletableFuture<Void>> segmentsCompletables = new ConcurrentLinkedQueue<>();
+        List<String> lines = linesCache.get(fileInput);
+        List<Segment> allSegments = new ArrayList<>();
+        lines.stream().map((line) -> segmentCache.get(new MultiKey3<>(line, wcsLetter, wcsOverride))).forEach((CompletableFuture<List<Segment>> futureSegments) -> {
+            segmentsCompletables.add(futureSegments.thenAccept((List<Segment> segments) -> {
+                allSegments.addAll(segments);
+            }));
+        });
+        CompletableFuture.allOf(segmentsCompletables.toArray(new CompletableFuture[segmentsCompletables.size()])).join();
+
+        return globalScalingCache.get(new MultiKey<>(allSegments, bc)).join();
+    }
+
+    CorrectionFactors getCorrectionFactors(Segment segment, BiasCorrection bc) {
+        return biasCorrectionCache.get(new MultiKey<>(segment, bc)).join();
     }
 }

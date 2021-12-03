@@ -21,38 +21,38 @@ import org.lsst.fits.imageio.cmap.SAOColorMap;
 public class CameraImageReadParam extends ImageReadParam {
 
     private boolean showBiasRegions = false;
-    private final GetSetAvailable<BiasCorrection> bc
-            = new GetSetAvailable<>(CameraImageReader.DEFAULT_BIAS_CORRECTION, "Bias Correction",
-                    new LinkedHashMap<String, BiasCorrection>() {
-                {
-                    put("None", CameraImageReader.DEFAULT_BIAS_CORRECTION);
-                    put("Simple Overscan Correction", new SerialParallelBiasCorrection());
-                    put("Simple Overscan Subtraction", new SerialParallelBiasSubtraction());
-                    put("Simple Overscan Subtraction2", new SerialParallelBiasSubtraction2());
-                    put("Simple Overscan Subtraction only", new SerialParallelBiasSub());
-                }
-            });
-    private final GetSetAvailable<RGBColorMap> colorMap
-            = new GetSetAvailable<>(CameraImageReader.DEFAULT_COLOR_MAP, "Color Map",
-                    new LinkedHashMap<String, RGBColorMap>() {
-                {
-                    put("grey", new SAOColorMap(256, "grey.sao"));
-                    put("a", new SAOColorMap(256, "a.sao"));
-                    put("b", new SAOColorMap(256, "b.sao"));
-                    put("bb", new SAOColorMap(256, "bb.sao"));
-                    put("cubehelix0", new SAOColorMap(256, "cubehelix0.sao"));
-                    put("cubehelix1", new SAOColorMap(256, "cubehelix1.sao"));
-                    put("rainbow", new SAOColorMap(256, "rainbow.sao"));
-                    put("standard", new SAOColorMap(256, "standard.sao"));
-                }
-            });
+    private final GetSetAvailable<BiasCorrection> bc;
+    private final GetSetAvailable<RGBColorMap> colorMap;
     private char wcsString = ' ';
     private long[] globalScale;
     private Map<String, Map<String, Object>> wcsOverride = null;
-    public enum Scale { GLOBAL, AMPLIFIER };
+
+    public enum Scale {
+        GLOBAL, AMPLIFIER
+    };
     private Scale scale = Scale.AMPLIFIER;
-    
-    
+
+    public CameraImageReadParam() {
+        Map<String, BiasCorrection> biasCorrectionOptions = new LinkedHashMap<>();
+        biasCorrectionOptions.put("None", CameraImageReader.DEFAULT_BIAS_CORRECTION);
+        biasCorrectionOptions.put("Simple Overscan Correction", new SerialParallelBiasCorrection());
+        biasCorrectionOptions.put("Simple Overscan Subtraction", new SerialParallelBiasSubtraction());
+        biasCorrectionOptions.put("Simple Overscan Subtraction2", new SerialParallelBiasSubtraction2());
+        biasCorrectionOptions.put("Simple Overscan Subtraction only", new SerialParallelBiasSub());
+        bc= new GetSetAvailable<>(CameraImageReader.DEFAULT_BIAS_CORRECTION, "Bias Correction", biasCorrectionOptions);
+ 
+        Map<String, RGBColorMap>  colorMapOptions = new LinkedHashMap<String, RGBColorMap>();
+        colorMapOptions.put("grey", new SAOColorMap(256, "grey.sao"));
+        colorMapOptions.put("a", new SAOColorMap(256, "a.sao"));
+        colorMapOptions.put("b", new SAOColorMap(256, "b.sao"));
+        colorMapOptions.put("bb", new SAOColorMap(256, "bb.sao"));
+        colorMapOptions.put("cubehelix0", new SAOColorMap(256, "cubehelix0.sao"));
+        colorMapOptions.put("cubehelix1", new SAOColorMap(256, "cubehelix1.sao"));
+        colorMapOptions.put("rainbow", new SAOColorMap(256, "rainbow.sao"));
+        colorMapOptions.put("standard", new SAOColorMap(256, "standard.sao"));
+        colorMap = new GetSetAvailable<>(CameraImageReader.DEFAULT_COLOR_MAP, "Color Map", colorMapOptions);
+    }
+
     public boolean isShowBiasRegions() {
         return showBiasRegions;
     }
@@ -68,7 +68,7 @@ public class CameraImageReadParam extends ImageReadParam {
     public void setWCSString(char wcsString) {
         this.wcsString = wcsString;
     }
-    
+
     public RGBColorMap getColorMap() {
         return colorMap.getValue();
     }
@@ -116,7 +116,7 @@ public class CameraImageReadParam extends ImageReadParam {
 
     public void setGlobalScale(long[] globalScale) {
         this.globalScale = globalScale;
-    }    
+    }
 
     public Map<String, Map<String, Object>> getWCSOverride() {
         return wcsOverride;

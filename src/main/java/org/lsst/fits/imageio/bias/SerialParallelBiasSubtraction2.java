@@ -60,7 +60,7 @@ public class SerialParallelBiasSubtraction2 implements BiasCorrection {
             }
             biasSum /= nAxis2 - parallelOverscanStart;
             // protect against outliers
-            if (biasSum > 100000) {
+            if (biasSum > 100000 || biasSum < 10000) {
                 biasSum = prevBiasSum;
             }
             parallelBias[x - datasec.x] = biasSum;

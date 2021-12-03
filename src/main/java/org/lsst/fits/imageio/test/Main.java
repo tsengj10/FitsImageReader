@@ -31,6 +31,7 @@ import javax.swing.filechooser.FileFilter;
 import org.lsst.fits.imageio.CameraImageReadParam;
 import org.lsst.fits.imageio.CameraImageReader;
 import org.lsst.fits.imageio.Segment;
+import org.lsst.fits.imageio.bias.BiasCorrection.CorrectionFactors;
 
 /**
  *
@@ -75,7 +76,7 @@ public class Main {
                 Point ip = ic.getImagePosition(e.getPoint());
                 StringBuilder builder = new StringBuilder();
                 builder.append("x=").append(ip.x).append(" y=").append(ip.y);
-                Segment segment = Main.this.reader.getImageMetaDataForPoint(ip.x, ip.y);
+                Segment segment = Main.this.reader.getImageMetaDataForPoint(readParam, ip.x, ip.y);
                 if (segment != null) {
                     try {
                         builder.append(" ").append(segment.getRaftBay()).append(" ").append(segment.getCcdSlot()).append(" ").append(segment.getSegmentName());
@@ -86,7 +87,11 @@ public class Main {
                         int pixel = Main.this.reader.getPixelForSegment(segment, ip.x, ip.y);
                         builder.append(" pixel=").append(pixel);
                         int rgb = Main.this.reader.getRGBForSegment(segment, ip.x, ip.y);
-                        builder.append(" rgb=").append(Integer.toHexString(rgb));
+                        builder.append(" rgb=").append(rgb&0xff);
+                        CorrectionFactors cf = Main.this.reader.getCorrectionFactorForSegment(segment);
+                        final int correctionFactor = cf.correctionFactor(segment.getDataSec().x + ip.x, segment.getDataSec().y + ip.y);
+                        builder.append(" cf=").append(correctionFactor);
+                        builder.append(" pixel-cf=").append(pixel-correctionFactor);
                     } catch (NoninvertibleTransformException ex) {
                         Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
                     }

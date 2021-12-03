@@ -2,6 +2,9 @@ package org.lsst.fits.imageio;
 
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.NoninvertibleTransformException;
+import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.IntBuffer;
@@ -9,9 +12,9 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 import javax.imageio.ImageReadParam;
 import javax.imageio.ImageReader;
 import javax.imageio.ImageTypeSpecifier;
@@ -20,6 +23,7 @@ import javax.imageio.spi.ImageReaderSpi;
 import javax.imageio.stream.ImageInputStream;
 import nom.tam.fits.FitsFactory;
 import org.lsst.fits.imageio.bias.BiasCorrection;
+import org.lsst.fits.imageio.bias.BiasCorrection.CorrectionFactors;
 import org.lsst.fits.imageio.bias.NullBiasCorrection;
 import org.lsst.fits.imageio.bias.SerialParallelBiasCorrection;
 import org.lsst.fits.imageio.cmap.RGBColorMap;
@@ -119,6 +123,31 @@ public class CameraImageReader extends ImageReader {
         return null;
     }
 
+    private void initialize(ImageReadParam param) {
+        BiasCorrection bc;
+        char wcsString;
+        CameraImageReadParam.Scale scale;
+        
+        if (param instanceof CameraImageReadParam) {
+            CameraImageReadParam cameraParam = (CameraImageReadParam) param;
+            bc = cameraParam.getBiasCorrection();
+            showBiasRegion = cameraParam.isShowBiasRegions();
+            wcsString = cameraParam.getWCSString();
+            scale = cameraParam.getScale();
+        } else {
+            bc = DEFAULT_BIAS_CORRECTION;
+            showBiasRegion = false;
+            wcsString = ' ';
+            scale = CameraImageReadParam.Scale.AMPLIFIER;
+        }
+        if (wcsString == ' ') {
+            wcsString = imageType == ImageType.FOCAL_PLANE ? 'E' : imageType == ImageType.RAFT ? 'Q' : 'B';
+        }
+        this.wcsString = wcsString;
+        this.biasCorrection = bc;
+        this.scale = scale;
+    }
+
     @Override
     public BufferedImage read(int imageIndex, ImageReadParam param) throws IOException {
 
@@ -135,38 +164,26 @@ public class CameraImageReader extends ImageReader {
             xSubSampling = param.getSourceXSubsampling();
             ySubSampling = param.getSourceYSubsampling();
         }
+        initialize(param);
+        
         BufferedImage result;
         Graphics2D g;
         RGBColorMap cmap;
         BiasCorrection bc;
         Map<String, Map<String, Object>> wcsOverride = null;
-        char wcsString;
         Rectangle sourceRegion = param == null ? null : param.getSourceRegion();
         long[] globalScale;
-        CameraImageReadParam.Scale scale;
         if (param instanceof CameraImageReadParam) {
             CameraImageReadParam cameraParam = (CameraImageReadParam) param;
             cmap = cameraParam.getColorMap();
             bc = cameraParam.getBiasCorrection();
-            showBiasRegion = cameraParam.isShowBiasRegions();
-            wcsString = cameraParam.getWCSString();
             globalScale = cameraParam.getGlobalScale();
             wcsOverride = cameraParam.getWCSOverride();
-            scale = cameraParam.getScale();
         } else {
             cmap = DEFAULT_COLOR_MAP;
             bc = DEFAULT_BIAS_CORRECTION;
-            showBiasRegion = false;
-            wcsString = ' ';
             globalScale = null;
-            scale = CameraImageReadParam.Scale.AMPLIFIER;
         }
-        if (wcsString == ' ') {
-            wcsString = imageType == ImageType.FOCAL_PLANE ? 'E' : imageType == ImageType.RAFT ? 'Q' : 'B';
-        }
-        this.wcsString = wcsString;
-        this.biasCorrection = bc;
-        this.scale = scale;
 
         // Note, graphics and source region being flipped in Y to comply with Camera visualization standards
         if (sourceRegion == null) {
@@ -194,44 +211,107 @@ public class CameraImageReader extends ImageReader {
         }
     }
 
-    public Segment getImageMetaDataForPoint(int x, int y) {
-        try {
-            Rectangle region = new Rectangle(x, y, 1, 1);
-            List<Segment> readSegments = READER.readSegments((ImageInputStream) getInput(), wcsString);
-            for (Segment segment : readSegments) {
-                if (segment.intersects(region)) {
-                    return segment;
-                }
+    public Segment getImageMetaDataForPoint(ImageReadParam param, int x, int y) {
+        initialize(param);
+        Rectangle region = new Rectangle(x, y, 1, 1);
+        List<Segment> readSegments = READER.readSegments((ImageInputStream) getInput(), wcsString);
+        for (Segment segment : readSegments) {
+            if (segment.intersects(region)) {
+                return segment;
             }
-            return null;
-        } catch (InterruptedException | ExecutionException ex) {
-            throw new RuntimeException("Unable to find segment", ex);
         }
+        return null;
     }
 
     public int getPixelForSegment(Segment segment, int x, int y) {
-        try {
-            RawData rawData = READER.getRawData(segment);
-            IntBuffer intBuffer = rawData.asIntBuffer();
-            int p = segment.getDataSec().x + x + y * segment.getNAxis1();
-            return intBuffer.get(p);
-        } catch (InterruptedException | ExecutionException ex) {
-            throw new RuntimeException("Unable to find segment", ex);
-        }
+        RawData rawData = READER.getRawData(segment);
+        IntBuffer intBuffer = rawData.asIntBuffer();
+        int p = segment.getDataSec().x + x + y * segment.getNAxis1();
+        return intBuffer.get(p);
     }
+
     public int getRGBForSegment(Segment segment, int x, int y) {
-        try {
-            if (scale == CameraImageReadParam.Scale.GLOBAL) {
-                long[] globalScale = READER.getGlobalScale((ImageInputStream) getInput(), biasCorrection, wcsString, null);
-                BufferedImage image = READER.getBufferedImage(segment, biasCorrection, globalScale);
-                return image.getRGB(x+segment.getDataSec().x, y+segment.getDataSec().y);
-            } else {
-                BufferedImage image = READER.getBufferedImage(segment, biasCorrection, null);
-                return image.getRGB(x+segment.getDataSec().x, y+segment.getDataSec().y);
-            }
-        } catch (InterruptedException | ExecutionException ex) {
-            throw new RuntimeException("Unable to find segment", ex);
+        if (scale == CameraImageReadParam.Scale.GLOBAL) {
+            long[] globalScale = READER.getGlobalScale((ImageInputStream) getInput(), biasCorrection, wcsString, null);
+            BufferedImage image = READER.getBufferedImage(segment, biasCorrection, globalScale);
+            return image.getRGB(x + segment.getDataSec().x, y + segment.getDataSec().y);
+        } else {
+            BufferedImage image = READER.getBufferedImage(segment, biasCorrection, null);
+            return image.getRGB(x + segment.getDataSec().x, y + segment.getDataSec().y);
         }
     }
 
+    public CorrectionFactors getCorrectionFactorForSegment(Segment segment) {
+        return READER.getCorrectionFactors(segment, biasCorrection);
+    }
+
+    public List<SegmentGeometry> getSegmentGeometry(ImageReadParam param) {
+        initialize(param);
+        List<Segment> readSegments = READER.readSegments((ImageInputStream) getInput(), wcsString);
+        return readSegments.stream().map(s -> new SegmentGeometry(s)).collect(Collectors.toList());
+    }
+
+    public static class SegmentGeometry {
+
+        private final int x;
+        private final int y;
+        private final int width;
+        private final int height;
+        private final String segmentName;
+        private final String raftBay;
+        private final String ccdSlot;
+        private final double[] flatmatrix;
+
+        public SegmentGeometry(Segment segment) {
+            Rectangle2D.Double wcs = segment.getWcs();
+            this.x = (int) Math.round(wcs.x);
+            this.y = (int) Math.round(wcs.y);
+            this.width = (int) Math.round(wcs.width);
+            this.height = (int) Math.round(wcs.height);
+            this.segmentName = segment.getSegmentName();
+            this.raftBay = segment.getRaftBay();
+            this.ccdSlot = segment.getCcdSlot();
+            this.flatmatrix = new double[6];
+            AffineTransform wcsTranslation = segment.getWCSTranslation(false);
+            try {
+                AffineTransform inverse = wcsTranslation.createInverse();
+                inverse.getMatrix(flatmatrix);
+            } catch (NoninvertibleTransformException ex) {
+                // Should never happen
+            }
+        }
+
+        public int getX() {
+            return x;
+        }
+
+        public int getY() {
+            return y;
+        }
+
+        public int getWidth() {
+            return width;
+        }
+
+        public int getHeight() {
+            return height;
+        }
+
+        public String getSegmentName() {
+            return segmentName;
+        }
+
+        public String getRaftBay() {
+            return raftBay;
+        }
+
+        public String getCcdSlot() {
+            return ccdSlot;
+        }
+
+        public double[] getFlatmatrix() {
+            return flatmatrix;
+        }
+
+    }
 }
