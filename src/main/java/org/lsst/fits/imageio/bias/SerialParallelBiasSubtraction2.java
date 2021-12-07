@@ -80,7 +80,7 @@ public class SerialParallelBiasSubtraction2 implements BiasCorrection {
 
     @Override
     public boolean equals(Object obj) {
-        return obj != null && SerialParallelBiasSubtraction.class.equals(obj.getClass());
+        return obj != null && this.getClass().equals(obj.getClass());
     }
 
     @Override

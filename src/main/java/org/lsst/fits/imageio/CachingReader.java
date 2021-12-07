@@ -106,14 +106,14 @@ public class CachingReader {
                 .maximumSize(Integer.getInteger("org.lsst.fits.imageio.globalScalingCacheSize", 10_000))
                 .recordStats()
                 .buildAsync((MultiKey<List<Segment>, BiasCorrection> key, Executor executor) -> {
+                    LOG.log(Level.FINE, "Building global scale for {0} {1} {2}", new Object[]{key.hashCode(), key.getKey1().hashCode(), key.getKey2().hashCode()});
                     List<CompletableFuture<ScalingUtils>> histograms = new ArrayList<>();
                     for (Segment segment : key.getKey1()) {
                         histograms.add(rawDataCache.get(segment).thenApply((rawData) -> {
-                            // TODO: use the cache!
-                            BiasCorrection biasCorrection = key.getKey2();
-                            IntBuffer intData = rawData.asIntBuffer();
-                            BiasCorrection.CorrectionFactors correctionFactors = biasCorrection.compute(intData, segment);
-                            return histogram(segment.getDataSec(), intData, segment, correctionFactors);
+                            return biasCorrectionCache.get(new MultiKey<Segment, BiasCorrection>(segment, key.getKey2())).thenApply(correctionFactors -> {
+                                IntBuffer intData = rawData.asIntBuffer();
+                                return histogram(segment.getDataSec(), intData, segment, correctionFactors);
+                            }).join(); // Not clear doing a join inside the loop is optimal
                         }));
                     }
                     return CompletableFuture.allOf(histograms.toArray(new CompletableFuture[0])).thenApply((v) -> {
@@ -385,8 +385,9 @@ public class CachingReader {
         int[] cdf = su.computeCDF();
 
         int range = cdf[max];
+        range = 1 + range/256;
         for (int i = su.getLowestOccupiedBin(); i <= max; i++) {
-            cdf[i] = CameraImageReader.DEFAULT_COLOR_MAP.getRGB(cdf[i] * 255 / range);
+            cdf[i] = CameraImageReader.DEFAULT_COLOR_MAP.getRGB(cdf[i] / range);
         }
 
         // Scale data 

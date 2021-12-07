@@ -17,7 +17,7 @@ public class NullBiasCorrection implements BiasCorrection {
 
     @Override
     public boolean equals(Object obj) {
-        return obj != null && NullBiasCorrection.class.equals(obj.getClass());
+        return obj != null && this.getClass().equals(obj.getClass());
     }
 
     @Override
