@@ -139,6 +139,20 @@ public class CachingReader {
                 .build((ImageInputStream in) -> {
                     return Timed.execute(() -> {
                         List<String> lines = new ArrayList<>();
+                        // test read first 80 characters to see if it's a FITS file,
+                        // which must begin with a "SIMPLE = T" header
+                        in.seek(0);
+                        byte[80] testbuf;
+                        if (in.read(testbuf, 0, 80) == 80) {
+                            String testline(testbuf); // specify a charset? FITS standard says restricted ASCII
+                            if (testline.startsWith("SIMPLE  = ") &&
+                                    testline.substr(10).trim().startsWith("T")) {
+                                lines.add("FITS SIMPLE = T");
+                                return lines;
+                            }
+                        }
+                        // restart reading. Now we assume we're looking at list of
+                        // individual fits file names.
                         in.seek(0);
                         for (;;) {
                             String line = in.readLine();
@@ -178,7 +192,9 @@ public class CachingReader {
 
     int preReadImage(ImageInputStream fileInput) {
         List<String> lines = linesCache.get(fileInput);
-        return lines == null ? 0 : lines.size();
+        if (lines == null) return 0;
+        if (lines[0] == "FITS SIMPLE = T") return -1; // individual FITS file
+        else return lines.size();
     }
 
     void readImage(ImageInputStream fileInput, Rectangle sourceRegion, Graphics2D g, RGBColorMap cmap, BiasCorrection bc, boolean showBiasRegion, char wcsLetter, long[] globalScale, Map<String, Map<String, Object>> wcsOverride) throws IOException {

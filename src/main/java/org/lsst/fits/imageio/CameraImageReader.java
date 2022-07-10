@@ -46,7 +46,7 @@ public class CameraImageReader extends ImageReader {
     private CameraImageReadParam.Scale scale;
 
     public enum ImageType {
-        FOCAL_PLANE, RAFT, CCD
+        FOCAL_PLANE, RAFT, CCD, FITS
     };
 
     private boolean showBiasRegion;
@@ -76,7 +76,15 @@ public class CameraImageReader extends ImageReader {
     public void setInput(Object input, boolean seekForwardOnly, boolean ignoreMetadata) {
         super.setInput(input, seekForwardOnly, ignoreMetadata);
         int lines = READER.preReadImage((ImageInputStream) input);
-        imageType = lines > 9 ? ImageType.FOCAL_PLANE : lines == 1 ? ImageType.CCD : ImageType.RAFT;
+        if (lines > 9) {
+            imageType = ImageType.FOCAL_PLANE;
+        } else if (lines == 1) {
+            imageType = ImageType.CCD;
+        } else if (lines < 0) {
+            imageType = ImageType.FITS;
+        } else {
+            imageType = ImageType.RAFT;
+        }
     }
 
     @Override
@@ -88,6 +96,7 @@ public class CameraImageReader extends ImageReader {
     public int getWidth(int imageIndex) throws IOException {
         switch (imageType) {
             case CCD:
+            case FITS:
                 return 509 * 8 + (showBiasRegion ? 1600 : 0);
             case RAFT:
                 return 3 * 4096 + 4 * IMAGE_OFFSET + (showBiasRegion ? 1600 : 0);
@@ -100,6 +109,7 @@ public class CameraImageReader extends ImageReader {
     public int getHeight(int imageIndex) throws IOException {
         switch (imageType) {
             case CCD:
+            case FITS:
                 return 4000 + (showBiasRegion ? 1600 : 0);
             case RAFT:
                 return 3 * 4096 + 4 * IMAGE_OFFSET + (showBiasRegion ? 1600 : 0);
