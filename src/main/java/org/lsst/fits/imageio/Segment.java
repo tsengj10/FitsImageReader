@@ -16,15 +16,16 @@ import java.nio.file.StandardOpenOption;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.zip.DataFormatException;
-import java.util.zip.Inflater;
 import nom.tam.fits.FitsException;
 import nom.tam.fits.FitsUtil;
 import nom.tam.fits.Header;
+import nom.tam.fits.compression.algorithm.api.ICompressor;
+import nom.tam.fits.compression.algorithm.gzip2.GZip2Compressor;
+import nom.tam.fits.compression.algorithm.rice.RiceCompressOption;
+import nom.tam.fits.compression.algorithm.rice.RiceCompressor.IntRiceCompressor;
 import nom.tam.fits.header.Standard;
 import nom.tam.util.BufferedFile;
 
@@ -66,6 +67,7 @@ public class Segment {
     private final String segmentName;
     private final String raftBay;
     private final String ccdSlot;
+    private final String compressionType;
 
     public Segment(Header header, File file, BufferedFile bf, String raftBay, String ccdSlot, char wcsLetter, Map<String, Object> wcsOverride) throws IOException, FitsException {
         this.file = file;
@@ -76,13 +78,14 @@ public class Segment {
         isCompressed = header.getBooleanValue("ZIMAGE");
         segmentName = header.getStringValue("EXTNAME");
         if (isCompressed) {
+            compressionType = header.getStringValue("ZCMPTYPE");
             // Note, nom,tam.fits has support for many/all compression types, 
             // but performance for the way we are trying to use it leaves much
             // to be desired. The "deferred data reading" used by nom.tam.fits also
             // has issues with requiring files to remain open to be used later.
             // For now we only support the GZIP_2 type used for camera data.
-            if (!"GZIP_2".equals(header.getStringValue("ZCMPTYPE"))) {
-                throw new FitsException("Unsupported compression type: "+header.getStringValue("ZCMPTYPE"));
+            if (!"RICE_1".equals(compressionType) && !"GZIP_2".equals(header.getStringValue("ZCMPTYPE"))) {
+                throw new FitsException("Unsupported compression type: " + compressionType);
             }
             nAxis1 = header.getIntValue("ZNAXIS1"); // 576
             nAxis2 = header.getIntValue("ZNAXIS2"); // 2048       
@@ -98,11 +101,12 @@ public class Segment {
             nAxis2 = header.getIntValue(Standard.NAXIS2);
             rawDataLength = nAxis1 * nAxis2 * 4;
             cAxis1 = cAxis2 = zTile1 = zTile2 = 0;
+            compressionType = null;
         }
         // Skip the data (for now)
         int pad = FitsUtil.padding(rawDataLength);
         bf.skip(rawDataLength + pad);
-        
+
         if (wcsOverride != null) {
             String datasecString = wcsOverride.get("DATASEC").toString();
             datasec = computeDatasec(datasecString);
@@ -178,53 +182,90 @@ public class Segment {
         }
     }
 
-    // The compressed data is store as a FITS BinaryTable, where is row of the image is decompressed 
+//    Old method no longer used, left here in case there is a performance decrease with new version
+//    private IntBuffer decodeGZIP2CompressedData(ByteBuffer bb) {
+//        // We use inflater directly since it can be reused (unlike GZIPInputStream)
+//        Inflater inflater = new Inflater(true);
+//        try {
+//            IntBuffer result = IntBuffer.allocate(nAxis1 * nAxis2);
+//            // offsets contain the length and offset of each tile
+//            int[] offsets = new int[cAxis1 * cAxis2 / 4];
+//            bb.asIntBuffer().get(offsets);
+//            bb.position(cAxis1 * cAxis2);
+//            // Note, the +1 is required by Inflater (actually zlib)
+//            byte[] decompressed = new byte[nAxis1 * 4 + 1];
+//            // We assume the compressed data will never be larger than the decompressed
+//            // data, but that might not be true.
+//            byte[] compressed = new byte[nAxis1 * 4 + 1];
+//            // Note, the format is designed to allow decompression to be parallelized
+//            // but since we are typically reading many files in parallel there is little
+//            // to be gained.
+//            for (int i = 0; i < cAxis2; i++) {
+//                // For jdk 8 we need to copy the input data into a byte array. If we
+//                // use jdk11 we can directly send the ByteBuffer to the inflater.
+//                bb.get(compressed, 0, offsets[i * 2]);
+//                inflater.reset();
+//                // 10 is to skip the gzip header
+//                inflater.setInput(compressed, 10, offsets[i * 2] - 10);
+//                int p = 0;
+//                while (!inflater.finished()) {
+//                    int l = inflater.inflate(decompressed, p, decompressed.length - p);
+//                    p += l;
+//                }
+//                unshuffle(decompressed, result);
+//            }
+//            result.flip();
+//            return result;
+//        } catch (DataFormatException x) {
+//            throw new CompletionException("Error decompressing image", x);
+//        } finally {
+//            inflater.end();
+//        }
+//    }
+    
+    private IntBuffer decodeGZIP2CompressedData(ByteBuffer bb) {
+        return this.decodeCompressedData(bb, new GZip2Compressor.IntGZip2Compressor());
+    }
+    
+    private IntBuffer decodeRICECompressedData(ByteBuffer bb) {
+        final RiceCompressOption riceCompressOption = new RiceCompressOption();
+        // Why are these hardwired? -- presumably should come from headers.
+        riceCompressOption.setBlockSize(32);
+        riceCompressOption.setBytePix(4);
+        IntRiceCompressor inflater = new IntRiceCompressor(riceCompressOption);
+        return this.decodeCompressedData(bb, inflater);
+    }
+    
+    // The compressed data is store as a FITS BinaryTable, where each row of the image is decompressed 
     // independently.
-    private IntBuffer decodeCompressedData(ByteBuffer bb) {
-        // We use inflater directly since it can be reused (unlike GZIPInputStream)
-        Inflater inflater = new Inflater(true);
-        try {
-            IntBuffer result = IntBuffer.allocate(nAxis1 * nAxis2);
-            // offsets contain the length and offset of each tile
-            int[] offsets = new int[cAxis1 * cAxis2 / 4];
-            bb.asIntBuffer().get(offsets);
-            bb.position(cAxis1 * cAxis2);
-            // Note, the +1 is required by Inflater (actually zlib)
-            byte[] decompressed = new byte[nAxis1 * 4 + 1];
-            // We assume the compressed data will never be larger than the decompressed
-            // data, but that might not be true.
-            byte[] compressed = new byte[nAxis1 * 4 + 1];
-            // Note, the format is designed to allow decompression to be parallelized
-            // but since we are typically reading many file in parallel there is little
-            // to be gained.
-            for (int i = 0; i < cAxis2; i++) {
-                // For jdk 8 we need to copy the input data into a byte array. If we
-                // use jdk11 we can directly send the ByteBuffer to the inflater.
-                bb.get(compressed, 0, offsets[i * 2]);
-                inflater.reset();
-                // 10 is to skip the gzip header
-                inflater.setInput(compressed, 10, offsets[i * 2] - 10);
-                int p = 0;
-                while (!inflater.finished()) {
-                    int l = inflater.inflate(decompressed, p, decompressed.length - p);
-                    p += l;
-                }
-                unshuffle(decompressed, result);
-            }
-            result.flip();
-            return result;
-        } catch (DataFormatException x) {
-            throw new CompletionException("Error decompressing image", x);
-        } finally {
-            inflater.end();
+    private IntBuffer decodeCompressedData(ByteBuffer bb, ICompressor<IntBuffer> inflater) {
+        IntBuffer result = IntBuffer.allocate(nAxis1 * nAxis2);
+        // offsets contain the length and offset of each tile
+        int[] offsets = new int[cAxis1 * cAxis2 / 4];
+        bb.asIntBuffer().get(offsets);
+        bb.position(cAxis1 * cAxis2);
+        // Note, the format is designed to allow decompression to be parallelized
+        // but since we are typically reading many files in parallel there is little
+        // to be gained.
+        for (int i = 0; i < cAxis2; i++) {
+            result.limit(result.position()+nAxis1);
+            bb.limit(bb.position()+offsets[i * 2]);
+            inflater.decompress(bb, result.slice());
+            result.position(result.position()+nAxis1);
         }
+        result.flip();
+        return result;
     }
 
     public CompletableFuture<RawData> readRawDataAsync(Executor executor) {
 
         CompletableFuture<ByteBuffer> futureByteBuffer = readByteBufferAsync();
         if (isCompressed) {
-            return futureByteBuffer.thenApply((bb) -> decodeCompressedData(bb)).thenApply((ib) -> new RawData(this, ib));
+            if ("GZIP_2".equals(compressionType)) {
+                return futureByteBuffer.thenApply((bb) -> decodeGZIP2CompressedData(bb)).thenApply((ib) -> new RawData(this, ib));
+            } else {
+                return futureByteBuffer.thenApply((bb) -> decodeRICECompressedData(bb)).thenApply((ib) -> new RawData(this, ib));
+            }
         } else {
             return futureByteBuffer.thenApply((bb) -> new RawData(this, bb.asIntBuffer()));
         }
@@ -309,7 +350,7 @@ public class Segment {
     public String getCcdSlot() {
         return ccdSlot;
     }
-    
+
     @Override
     public String toString() {
         return "Segment{" + "file=" + file + ", name=" + segmentName + ", raftBay=" + raftBay + ", ccdSlot=" + ccdSlot + '}';
