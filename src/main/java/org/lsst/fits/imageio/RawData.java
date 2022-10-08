@@ -1,6 +1,7 @@
 package org.lsst.fits.imageio;
 
 import java.nio.IntBuffer;
+import java.nio.FloatBuffer;
 import java.util.Objects;
 
 /**
@@ -12,11 +13,30 @@ public class RawData {
     private final Segment segment;
     private final IntBuffer ib;
 
+    /**
+     * Create raw data from integer pixel data buffer
+     * @param segment The corresponding segment
+     * @param ib The integer pixel data
+     */
     RawData(Segment segment, IntBuffer ib) {
         this.segment = segment;
         this.ib = ib;
     }
 
+    /**
+     * Temporary implementation, simply converts float to int by a cast.
+     * @param segment The segment corresponding to this data
+     * @param fb Floating point pixel data
+     */
+    RawData(Segment segment, FloatBuffer fb) {
+        this.segment = segment;
+        this.ib = IntBuffer.allocate(fb.capacity());
+        for (int i=0; i<fb.limit(); i++) {
+            ib.put((int) fb.get());
+        }
+        ib.flip();
+    }
+    
     public IntBuffer asIntBuffer() {
         return ib;
     }

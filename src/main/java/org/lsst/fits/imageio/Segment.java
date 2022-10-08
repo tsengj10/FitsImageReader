@@ -9,6 +9,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
@@ -68,6 +69,7 @@ public class Segment {
     private final String raftBay;
     private final String ccdSlot;
     private final String compressionType;
+    private final int bitpix;
 
     public Segment(Header header, File file, BufferedFile bf, String raftBay, String ccdSlot, char wcsLetter, Map<String, Object> wcsOverride) throws IOException, FitsException {
         this.file = file;
@@ -78,6 +80,7 @@ public class Segment {
         isCompressed = header.getBooleanValue("ZIMAGE");
         segmentName = header.getStringValue("EXTNAME");
         if (isCompressed) {
+            bitpix = header.getIntValue("ZBITPIX");
             compressionType = header.getStringValue("ZCMPTYPE");
             // Note, nom,tam.fits has support for many/all compression types, 
             // but performance for the way we are trying to use it leaves much
@@ -97,6 +100,7 @@ public class Segment {
             zTile1 = header.getIntValue("ZTILE1"); // 576
             zTile2 = header.getIntValue("ZTILE2"); // 1  
         } else {
+            bitpix = header.getIntValue("BITPIX");
             nAxis1 = header.getIntValue(Standard.NAXIS1);
             nAxis2 = header.getIntValue(Standard.NAXIS2);
             rawDataLength = nAxis1 * nAxis2 * 4;
@@ -174,13 +178,13 @@ public class Segment {
         return file;
     }
 
-    // Data in the compressed byte array is stored with the bytes shuffled, this routine unshuffles them
-    private void unshuffle(byte[] in, IntBuffer out) {
-        int length = in.length / 4;
-        for (int i = 0; i < length; i++) {
-            out.put(((0xff & in[i]) << 24) + ((0xff & in[i + length]) << 16) + ((0xff & in[i + 2 * length]) << 8) + ((0xff & in[i + 3 * length])));
-        }
-    }
+//    // Data in the compressed byte array is stored with the bytes shuffled, this routine unshuffles them
+//    private void unshuffle(byte[] in, IntBuffer out) {
+//        int length = in.length / 4;
+//        for (int i = 0; i < length; i++) {
+//            out.put(((0xff & in[i]) << 24) + ((0xff & in[i + length]) << 16) + ((0xff & in[i + 2 * length]) << 8) + ((0xff & in[i + 3 * length])));
+//        }
+//    }
 
 //    Old method no longer used, left here in case there is a performance decrease with new version
 //    private IntBuffer decodeGZIP2CompressedData(ByteBuffer bb) {
@@ -226,6 +230,10 @@ public class Segment {
     private IntBuffer decodeGZIP2CompressedData(ByteBuffer bb) {
         return this.decodeCompressedData(bb, new GZip2Compressor.IntGZip2Compressor());
     }
+
+    private FloatBuffer decodeGZIP2FloatCompressedData(ByteBuffer bb) {
+        return this.decodeCompressedFloatData(bb, new GZip2Compressor.FloatGZip2Compressor());
+    }
     
     private IntBuffer decodeRICECompressedData(ByteBuffer bb) {
         final RiceCompressOption riceCompressOption = new RiceCompressOption();
@@ -257,12 +265,38 @@ public class Segment {
         return result;
     }
 
+    private FloatBuffer decodeCompressedFloatData(ByteBuffer bb, ICompressor<FloatBuffer> inflater) {
+        FloatBuffer result = FloatBuffer.allocate(nAxis1 * nAxis2);
+        // offsets contain the length and offset of each tile
+        int[] offsets = new int[cAxis1 * cAxis2 / 4];
+        bb.asIntBuffer().get(offsets);
+        bb.position(cAxis1 * cAxis2);
+        // Note, the format is designed to allow decompression to be parallelized
+        // but since we are typically reading many files in parallel there is little
+        // to be gained.
+        for (int i = 0; i < cAxis2; i++) {
+            result.limit(result.position()+nAxis1);
+            bb.limit(bb.position()+offsets[i * 2]);
+            inflater.decompress(bb, result.slice());
+            result.position(result.position()+nAxis1);
+        }
+        result.flip();
+        return result;
+    }
+
     public CompletableFuture<RawData> readRawDataAsync(Executor executor) {
 
         CompletableFuture<ByteBuffer> futureByteBuffer = readByteBufferAsync();
         if (isCompressed) {
             if ("GZIP_2".equals(compressionType)) {
-                return futureByteBuffer.thenApply((bb) -> decodeGZIP2CompressedData(bb)).thenApply((ib) -> new RawData(this, ib));
+                switch (bitpix) {
+                    case 32:
+                        return futureByteBuffer.thenApply((bb) -> decodeGZIP2CompressedData(bb)).thenApply((ib) -> new RawData(this, ib));
+                    case -32:
+                        return futureByteBuffer.thenApply((bb) -> decodeGZIP2FloatCompressedData(bb)).thenApply((fb) -> new RawData(this, fb));
+                    default:
+                        throw new RuntimeException("Unsupported bitpix: "+bitpix);
+                }
             } else {
                 return futureByteBuffer.thenApply((bb) -> decodeRICECompressedData(bb)).thenApply((ib) -> new RawData(this, ib));
             }

@@ -13,6 +13,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -116,7 +117,7 @@ public class CachingReader {
                             }).join(); // Not clear doing a join inside the loop is optimal
                         }));
                     }
-                    return CompletableFuture.allOf(histograms.toArray(new CompletableFuture[0])).thenApply((v) -> {
+                    return CompletableFuture.allOf(histograms.toArray(CompletableFuture[]::new)).thenApply((v) -> {
                         try {
                             long[] counts = new long[1 << 18];
                             for (CompletableFuture<ScalingUtils> future : histograms) {
@@ -216,9 +217,9 @@ public class CachingReader {
                 }));
             });
             LOG.log(Level.INFO, "Waiting for {0} files", segmentsCompletables.size());
-            CompletableFuture.allOf(segmentsCompletables.toArray(new CompletableFuture[segmentsCompletables.size()])).join();
+            CompletableFuture.allOf(segmentsCompletables.toArray(CompletableFuture[]::new)).join();
             LOG.log(Level.INFO, "Waiting for {0} buffered images", bufferedImageCompletables.size());
-            CompletableFuture.allOf(bufferedImageCompletables.toArray(new CompletableFuture[bufferedImageCompletables.size()])).join();
+            CompletableFuture.allOf(bufferedImageCompletables.toArray(CompletableFuture[]::new)).join();
             LOG.log(Level.INFO, "Done waiting");
         } catch (CompletionException x) {
             Throwable cause = x.getCause();
@@ -244,7 +245,7 @@ public class CachingReader {
                 }));
             });
             LOG.log(Level.INFO, "Waiting for {0} files", segmentsCompletables.size());
-            CompletableFuture.allOf(segmentsCompletables.toArray(new CompletableFuture[segmentsCompletables.size()])).join();
+            CompletableFuture.allOf(segmentsCompletables.toArray(CompletableFuture[]::new)).join();
 
             globalScaleCompletable.add(globalScalingCache.get(new MultiKey<>(allSegments, bc)).thenAccept((long[] globalScale) -> {
                 List<Segment> segmentsToRead = computeSegmentsToRead(allSegments, sourceRegion);
@@ -342,27 +343,57 @@ public class CachingReader {
         String ccdSlot = null;
         String raftBay = null;
         int nSegments = 16;
+        boolean isDMFile = false;
         try ( BufferedFile bf = new BufferedFile(file, "r")) {
             for (int i = 0; i < nSegments + 1; i++) {
                 Header header = new Header(bf);
                 if (i == 0) {
                     raftBay = header.getStringValue("RAFTBAY");
                     ccdSlot = header.getStringValue("CCDSLOT");
+                    long expId = header.getLongValue("EXPID");
                     if (ccdSlot == null) {
                         ccdSlot = header.getStringValue("SENSNAME");
                     }
                     if (ccdSlot == null) {
                         throw new IOException("Missing CCDSLOT while reading " + file);
                     }
-                    if (ccdSlot.startsWith("SW")) {
+                    if (expId != 0) { // Crude way to test if this is a DM file
+                        nSegments = 1;
+                        isDMFile = true;
+                    } else if (ccdSlot.startsWith("SW")) {
                         nSegments = 8;
                     }
                 }
                 if (i > 0) {
-                    String extName = header.getStringValue("EXTNAME");
-                    String wcsKey = String.format("%s/%s/%s", raftBay, ccdSlot, extName.substring(7, 9));
-                    Segment segment = new Segment(header, file, bf, raftBay, ccdSlot, wcsLetter, wcsOverride == null ? null : wcsOverride.get(wcsKey));
-                    result.add(segment);
+                    if (isDMFile) {
+                        // This is correct for a single CCD (e.g. AuxTel)
+                        // Will need more work for the general case
+                        wcsLetter = 'D';
+                        Map<String, Object> dmWCSOverride = new HashMap<>();
+                        boolean isCompressed = header.getBooleanValue("ZIMAGE");
+                        int naxis1, naxis2;
+                        if (isCompressed) {
+                            naxis1 = header.getIntValue("ZNAXIS1");
+                            naxis2 = header.getIntValue("ZNAXIS2");                            
+                        } else {
+                            naxis1 = header.getIntValue("NAXIS1");
+                            naxis2 = header.getIntValue("NAXIS2");
+                        }
+                        dmWCSOverride.put("DATASEC", String.format("[1:%d,1:%d]", naxis1, naxis2));
+                        dmWCSOverride.put("PC1_1D",1.0);
+                        dmWCSOverride.put("PC1_2D",0.0);
+                        dmWCSOverride.put("PC2_1D",0.0);
+                        dmWCSOverride.put("PC2_2D",1.0);
+                        dmWCSOverride.put("CRVAL1D",0);
+                        dmWCSOverride.put("CRVAL2D",0);
+                        Segment segment = new Segment(header, file, bf, raftBay, ccdSlot, wcsLetter, dmWCSOverride);
+                        result.add(segment);                        
+                    } else  {
+                        String extName = header.getStringValue("EXTNAME");
+                        String wcsKey = String.format("%s/%s/%s", raftBay, ccdSlot, extName.substring(7, 9));
+                        Segment segment = new Segment(header, file, bf, raftBay, ccdSlot, wcsLetter, wcsOverride == null ? null : wcsOverride.get(wcsKey));
+                        result.add(segment);
+                    }
                 }
             }
         }
@@ -475,7 +506,7 @@ public class CachingReader {
                 allSegments.addAll(segments);
             }));
         });
-        CompletableFuture.allOf(segmentsCompletables.toArray(new CompletableFuture[segmentsCompletables.size()])).join();
+        CompletableFuture.allOf(segmentsCompletables.toArray(CompletableFuture[]::new)).join();
 
         return globalScalingCache.get(new MultiKey<>(allSegments, bc)).join();
     }
