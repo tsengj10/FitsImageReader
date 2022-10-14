@@ -99,7 +99,7 @@ public class SerialParallelBiasSubtraction2 implements BiasCorrection {
         }
         header = new Header(bf);
         Segment segment = new Segment(header, file, bf, "R22", "S20", '4', null);
-        IntBuffer intBuffer = segment.readRawDataAsync(null).join().asIntBuffer();
+        IntBuffer intBuffer = (IntBuffer) segment.readRawDataAsync(null).join().getBuffer();
 
         BiasCorrection bc = new SerialParallelBiasSubtraction2();
         CorrectionFactors factors = bc.compute(intBuffer, segment);

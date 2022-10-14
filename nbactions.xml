@@ -10,8 +10,11 @@
                 <goal>org.codehaus.mojo:exec-maven-plugin:1.5.0:exec</goal>
             </goals>
             <properties>
-                <exec.args>-Dsun.java2d.trace=count -Xmx24g -classpath %classpath org.lsst.fits.imageio.test.Main /home/tonyj/Data/pretty/R22.raft</exec.args>
+                <exec.args>${exec.vmArgs} -classpath %classpath ${exec.mainClass} ${exec.appArgs}</exec.args>
                 <exec.executable>java</exec.executable>
+                <exec.appArgs>/home/tonyj/Data/pretty-compressed/pretty.raft</exec.appArgs>
+                <exec.vmArgs>-Dsun.java2d.trace=count -Xmx24g</exec.vmArgs>
+                <exec.mainClass>org.lsst.fits.imageio.test.Main</exec.mainClass>
             </properties>
         </action>
         <action>
@@ -24,9 +27,12 @@
                 <goal>org.codehaus.mojo:exec-maven-plugin:1.5.0:exec</goal>
             </goals>
             <properties>
-                <exec.args>-agentlib:jdwp=transport=dt_socket,server=n,address=${jpda.address} -Dsun.java2d.trace=count -Xmx24g -classpath %classpath org.lsst.fits.imageio.test.Main /home/tonyj/Data/pretty/R22.raft</exec.args>
+                <exec.args>${exec.vmArgs} -classpath %classpath ${exec.mainClass} ${exec.appArgs}</exec.args>
                 <exec.executable>java</exec.executable>
                 <jpda.listen>true</jpda.listen>
+                <exec.appArgs>/home/tonyj/Data/pretty-compressed/pretty.raft</exec.appArgs>
+                <exec.vmArgs>-Dsun.java2d.trace=count -Xmx24g -agentlib:jdwp=transport=dt_socket,server=n,address=${jpda.address}</exec.vmArgs>
+                <exec.mainClass>org.lsst.fits.imageio.test.Main</exec.mainClass>
             </properties>
         </action>
         <action>
@@ -39,8 +45,11 @@
                 <goal>org.codehaus.mojo:exec-maven-plugin:1.5.0:exec</goal>
             </goals>
             <properties>
-                <exec.args>-Dsun.java2d.trace=count -Xmx24g -classpath %classpath org.lsst.fits.imageio.test.Main /home/tonyj/Data/pretty/R22.raft</exec.args>
+                <exec.args>${exec.vmArgs} -classpath %classpath ${exec.mainClass} ${exec.appArgs}</exec.args>
                 <exec.executable>java</exec.executable>
+                <exec.appArgs>/home/tonyj/Data/pretty-compressed/pretty.raft</exec.appArgs>
+                <exec.vmArgs>-Dsun.java2d.trace=count -Xmx24g</exec.vmArgs>
+                <exec.mainClass>org.lsst.fits.imageio.test.Main</exec.mainClass>
             </properties>
         </action>
         <action>

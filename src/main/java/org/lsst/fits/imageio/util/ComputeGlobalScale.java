@@ -28,7 +28,7 @@ public class ComputeGlobalScale {
         long[] count = new long[1 << 18];
         for(Segment segment : segments) {
             RawData rawData = reader.getRawData(segment);
-            IntBuffer intBuffer = rawData.asIntBuffer();        
+            IntBuffer intBuffer = (IntBuffer) rawData.getBuffer();        
             Rectangle datasec = segment.getDataSec();
             // Note: This is hardwired for Camera (18 bit) data
             for (int x = datasec.x; x < datasec.width + datasec.x; x++) {

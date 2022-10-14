@@ -41,7 +41,7 @@ public class CameraImageReadParam extends ImageReadParam {
         biasCorrectionOptions.put("Simple Overscan Subtraction only", new SerialParallelBiasSub());
         bc= new GetSetAvailable<>(CameraImageReader.DEFAULT_BIAS_CORRECTION, "Bias Correction", biasCorrectionOptions);
  
-        Map<String, RGBColorMap>  colorMapOptions = new LinkedHashMap<String, RGBColorMap>();
+        Map<String, RGBColorMap>  colorMapOptions = new LinkedHashMap<>();
         colorMapOptions.put("grey", new SAOColorMap(256, "grey.sao"));
         colorMapOptions.put("a", new SAOColorMap(256, "a.sao"));
         colorMapOptions.put("b", new SAOColorMap(256, "b.sao"));
