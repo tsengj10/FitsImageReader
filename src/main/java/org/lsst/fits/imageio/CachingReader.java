@@ -3,6 +3,7 @@ package org.lsst.fits.imageio;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
+import com.github.benmanes.caffeine.cache.Weigher;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
@@ -88,8 +89,10 @@ public class CachingReader {
                     }, "Loading %s took %dms", key.line);
                 });
 
+        Weigher<Segment, RawData> rawDataWeigher = (Segment k1, RawData rawData) -> rawData.getBuffer().capacity() * 4;
         rawDataCache = Caffeine.newBuilder()
-                .maximumSize(Integer.getInteger("org.lsst.fits.imageio.rawDataCacheSize", 1_000))
+                .weigher(rawDataWeigher)
+                .maximumWeight(Long.getLong("org.lsst.fits.imageio.rawDataCacheSizeBytes", 1_000_000_000L))
                 .recordStats()
                 .buildAsync((Segment segment, Executor executor) -> segment.readRawDataAsync(executor));
 
@@ -107,8 +110,10 @@ public class CachingReader {
                     });
                 });
 
+        Weigher<SegmentBiasCorrectionAndCounts, BufferedImage> buffedImageWeigher = (SegmentBiasCorrectionAndCounts k1, BufferedImage bi) -> bi.getHeight() * bi.getWidth() * 4;
         bufferedImageCache = Caffeine.newBuilder()
-                .maximumSize(Integer.getInteger("org.lsst.fits.imageio.bufferedImageCacheSize", 10_000))
+                .weigher(buffedImageWeigher)
+                .maximumWeight(Long.getLong("org.lsst.fits.imageio.bufferedImageCacheSizeBytes", 5_000_000_000L))
                 .recordStats()
                 .buildAsync((SegmentBiasCorrectionAndCounts key, Executor executor) -> {
                     return rawDataCache.get(key.segment).thenApply(rawData -> {
