@@ -84,14 +84,13 @@ public class Main {
                         AffineTransform inverse = wcsTranslation.createInverse();
                         inverse.transform(ip, ip);
                         builder.append(" x=").append(ip.x).append(" y=").append(ip.y);
-                        int pixel = Main.this.reader.getPixelForSegment(segment, ip.x, ip.y);
+                        Number pixel = Main.this.reader.getPixelForSegment(segment, ip.x, ip.y);
                         builder.append(" pixel=").append(pixel);
                         int rgb = Main.this.reader.getRGBForSegment(segment, ip.x, ip.y);
                         builder.append(" rgb=").append(rgb&0xff);
                         CorrectionFactors cf = Main.this.reader.getCorrectionFactorForSegment(segment);
                         final int correctionFactor = cf.correctionFactor(segment.getDataSec().x + ip.x, segment.getDataSec().y + ip.y);
                         builder.append(" cf=").append(correctionFactor);
-                        builder.append(" pixel-cf=").append(pixel-correctionFactor);
                     } catch (NoninvertibleTransformException ex) {
                         Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
                     }

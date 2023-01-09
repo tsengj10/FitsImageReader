@@ -40,7 +40,7 @@ public class SAOColorMap extends RGBColorMap {
             LineProvider lines = new LineProvider(input);
             ColorScheme colorScheme = ColorScheme.valueOf(lines.nextLine());
             switch (colorScheme) {
-                case PSEUDOCOLOR:
+                case PSEUDOCOLOR -> {
                     Map<Color, Interpolation> cmap = new HashMap<>();
                     Color currentColor = null;
                     Interpolation currentInterpolation = null;
@@ -66,10 +66,9 @@ public class SAOColorMap extends RGBColorMap {
                         }
                     }
                     rgb = convertToCMap(size, cmap);
-                    break;
+                }
 
-                default:
-                    throw new RuntimeException("Unsupported color scheme: " + colorScheme);
+                default -> throw new RuntimeException("Unsupported color scheme: " + colorScheme);
             }
         } catch (IOException x) {
             throw new RuntimeException("Invalid colormap " + colorMap, x);

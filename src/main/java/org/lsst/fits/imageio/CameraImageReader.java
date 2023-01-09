@@ -7,6 +7,8 @@ import java.awt.geom.NoninvertibleTransformException;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.nio.Buffer;
+import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.Collections;
 import java.util.Iterator;
@@ -86,26 +88,26 @@ public class CameraImageReader extends ImageReader {
 
     @Override
     public int getWidth(int imageIndex) throws IOException {
-        switch (imageType) {
-            case CCD:
-                return 509 * 8 + (showBiasRegion ? 1600 : 0);
-            case RAFT:
-                return 3 * 4096 + 4 * IMAGE_OFFSET + (showBiasRegion ? 1600 : 0);
-            default:
-                return 15 * 4096 + 16 * IMAGE_OFFSET;
-        }
+        return switch (imageType) {
+            case CCD ->
+                509 * 8 + (showBiasRegion ? 1600 : 0);
+            case RAFT ->
+                3 * 4096 + 4 * IMAGE_OFFSET + (showBiasRegion ? 1600 : 0);
+            default ->
+                15 * 4096 + 16 * IMAGE_OFFSET;
+        };
     }
 
     @Override
     public int getHeight(int imageIndex) throws IOException {
-        switch (imageType) {
-            case CCD:
-                return 4000 + (showBiasRegion ? 1600 : 0);
-            case RAFT:
-                return 3 * 4096 + 4 * IMAGE_OFFSET + (showBiasRegion ? 1600 : 0);
-            default:
-                return 15 * 4096 + 16 * IMAGE_OFFSET;
-        }
+        return switch (imageType) {
+            case CCD ->
+                4000 + (showBiasRegion ? 1600 : 0);
+            case RAFT ->
+                3 * 4096 + 4 * IMAGE_OFFSET + (showBiasRegion ? 1600 : 0);
+            default ->
+                15 * 4096 + 16 * IMAGE_OFFSET;
+        };
     }
 
     @Override
@@ -125,27 +127,26 @@ public class CameraImageReader extends ImageReader {
 
     private void initialize(ImageReadParam param) {
         BiasCorrection bc;
-        char wcsString;
-        CameraImageReadParam.Scale scale;
-        
-        if (param instanceof CameraImageReadParam) {
-            CameraImageReadParam cameraParam = (CameraImageReadParam) param;
+        char localWcsString;
+        CameraImageReadParam.Scale localScale;
+
+        if (param instanceof CameraImageReadParam cameraParam) {
             bc = cameraParam.getBiasCorrection();
             showBiasRegion = cameraParam.isShowBiasRegions();
-            wcsString = cameraParam.getWCSString();
-            scale = cameraParam.getScale();
+            localWcsString = cameraParam.getWCSString();
+            localScale = cameraParam.getScale();
         } else {
             bc = DEFAULT_BIAS_CORRECTION;
             showBiasRegion = false;
-            wcsString = ' ';
-            scale = CameraImageReadParam.Scale.AMPLIFIER;
+            localWcsString = ' ';
+            localScale = CameraImageReadParam.Scale.AMPLIFIER;
         }
-        if (wcsString == ' ') {
-            wcsString = imageType == ImageType.FOCAL_PLANE ? 'E' : imageType == ImageType.RAFT ? 'Q' : 'B';
+        if (localWcsString == ' ') {
+            localWcsString = imageType == ImageType.FOCAL_PLANE ? 'E' : imageType == ImageType.RAFT ? 'Q' : 'B';
         }
-        this.wcsString = wcsString;
+        this.wcsString = localWcsString;
         this.biasCorrection = bc;
-        this.scale = scale;
+        this.scale = localScale;
     }
 
     @Override
@@ -165,7 +166,7 @@ public class CameraImageReader extends ImageReader {
             ySubSampling = param.getSourceYSubsampling();
         }
         initialize(param);
-        
+
         BufferedImage result;
         Graphics2D g;
         RGBColorMap cmap;
@@ -173,8 +174,7 @@ public class CameraImageReader extends ImageReader {
         Map<String, Map<String, Object>> wcsOverride = null;
         Rectangle sourceRegion = param == null ? null : param.getSourceRegion();
         long[] globalScale;
-        if (param instanceof CameraImageReadParam) {
-            CameraImageReadParam cameraParam = (CameraImageReadParam) param;
+        if (param instanceof CameraImageReadParam cameraParam) {
             cmap = cameraParam.getColorMap();
             bc = cameraParam.getBiasCorrection();
             globalScale = cameraParam.getGlobalScale();
@@ -223,11 +223,11 @@ public class CameraImageReader extends ImageReader {
         return null;
     }
 
-    public int getPixelForSegment(Segment segment, int x, int y) {
+    public Number getPixelForSegment(Segment segment, int x, int y) {
         RawData rawData = READER.getRawData(segment);
-        IntBuffer intBuffer = rawData.asIntBuffer();
+        Buffer buffer = rawData.getBuffer();
         int p = segment.getDataSec().x + x + y * segment.getNAxis1();
-        return intBuffer.get(p);
+        return buffer instanceof IntBuffer iBuffer ? iBuffer.get(p) : buffer instanceof FloatBuffer fBuffer ? fBuffer.get(p) : 0;
     }
 
     public int getRGBForSegment(Segment segment, int x, int y) {
