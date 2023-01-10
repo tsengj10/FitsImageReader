@@ -11,7 +11,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.lsst</groupId>
     <artifactId>ccs.fits.test</artifactId>
-    <version>1.7.0</version>
+    <version>1.7.1-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>FITS Image Reader</name>
 
@@ -19,7 +19,7 @@
         <url>https://github.com/lsst-camera-visualization/FitsImageReader.git</url>
         <connection>scm:git:git://github.com/lsst-camera-visualization/FitsImageReader.git</connection>
         <developerConnection>scm:git:ssh://git@github.com/lsst-camera-visualization/FitsImageReader.git</developerConnection>
-        <tag>ccs.fits.test-1.7.0</tag>
+        <tag>HEAD</tag>
     </scm>
 
     <distributionManagement>
