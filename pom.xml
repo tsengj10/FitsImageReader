@@ -13,10 +13,33 @@
     <artifactId>ccs.fits.test</artifactId>
     <version>1.7.0-SNAPSHOT</version>
     <packaging>jar</packaging>
+    <name>FITS Image Reader</name>
+
+    <scm>
+        <url>https://github.com/lsst-camera-visualization/FitsImageReader.git</url>
+        <connection>scm:git:git://github.com/lsst-camera-visualization/FitsImageReader.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/lsst-camera-visualization/FitsImageReader.git</developerConnection>
+        <tag>HEAD</tag>
+    </scm>
+
+    <distributionManagement>
+        <site>
+            <id>lsst-maven2-site</id>
+            <name>LSST Maven2 central site repository</name>
+            <url>dav:${org.lsst.ccs.site.url}</url>
+        </site>
+    </distributionManagement>
+
+    <properties>
+        <org.lsst.ccs.site.url>https://repo-nexus.lsst.org/nexus/content/sites/${org.lsst.ccs.site.name}/site-root/utilities/${project.artifactId}/${project.version}</org.lsst.ccs.site.url>
+        <org_lsst_ccs_project_type>utility</org_lsst_ccs_project_type>
+    </properties>
+
+
+
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
-    <name>FITS Image Reader</name>
     <repositories>
         <repository>
             <id>lsst-maven2-public</id>
