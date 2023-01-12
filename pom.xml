@@ -31,8 +31,8 @@
     </distributionManagement>
 
     <properties>
-        <org.lsst.ccs.site.url>https://repo-nexus.lsst.org/nexus/content/sites/${org.lsst.ccs.site.name}/site-root/utilities/${project.artifactId}/${project.version}</org.lsst.ccs.site.url>
-        <org_lsst_ccs_project_type>utility</org_lsst_ccs_project_type>
+        <org.lsst.ccs.site.url>https://repo-nexus.lsst.org/nexus/content/sites/${org.lsst.ccs.site.name}/site-root/visualization/${project.artifactId}/${project.version}</org.lsst.ccs.site.url>
+        <org_lsst_ccs_project_type>visualization</org_lsst_ccs_project_type>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
