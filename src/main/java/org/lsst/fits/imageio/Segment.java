@@ -126,14 +126,29 @@ public class Segment {
             if (datasecString == null) {
                 throw new IOException("Missing datasec for file: " + file);
             }
+            // Note, for corner rafts, we see that the Q (raft) coordinates are not correct,
+            // so instead we use the E (focal-plane) coordinates, and shift based on the raft position.
+            char localWcsLetter = wcsLetter;
+            if (wcsLetter == 'Q' && raftBay != null) {
+                localWcsLetter = 'E';
+            }
             datasec = computeDatasec(datasecString);
-            pc1_1 = header.getDoubleValue("PC1_1" + wcsLetter);
-            pc2_2 = header.getDoubleValue("PC2_2" + wcsLetter);
-            pc1_2 = header.getDoubleValue("PC1_2" + wcsLetter);
-            pc2_1 = header.getDoubleValue("PC2_1" + wcsLetter);
-            crval1 = header.getDoubleValue("CRVAL1" + wcsLetter);
-            crval2 = header.getDoubleValue("CRVAL2" + wcsLetter);
+            pc1_1 = header.getDoubleValue("PC1_1" + localWcsLetter);
+            pc2_2 = header.getDoubleValue("PC2_2" + localWcsLetter);
+            pc1_2 = header.getDoubleValue("PC1_2" + localWcsLetter);
+            pc2_1 = header.getDoubleValue("PC2_1" + localWcsLetter);
+            crval1 = header.getDoubleValue("CRVAL1" + localWcsLetter);
+            crval2 = header.getDoubleValue("CRVAL2" + localWcsLetter);
             channel = header.getIntValue("CHANNEL");
+            if (wcsLetter == 'Q' && raftBay != null) {
+                int raftX = Integer.parseInt(raftBay.substring(1,2));
+                int raftY = Integer.parseInt(raftBay.substring(2,3));
+                crval1 -= raftY*12700;
+                crval2 -= raftX*12700;
+                //double oldCrval1 = header.getDoubleValue("CRVAL1" + "Q");
+                //double oldCrval2 = header.getDoubleValue("CRVAL2" + "Q");
+                //System.out.printf("File: %s Raft: %d %d crval1 %g crval2 %g oldcrval1 %g oldcrval2 %g\n", file, raftX, raftY, crval1, crval2, oldCrval1, oldCrval2);
+            }
         }
         //This does not work for corner rafts!
         //ccdX = Integer.parseInt(ccdSlot.substring(1, 2));

@@ -389,6 +389,11 @@ public class CachingReader {
                     } else if (ccdSlot.startsWith("SW")) {
                         nSegments = 8;
                     }
+                    boolean isGuiderFile = header.containsKey("N_STAMPS");
+                    if (isGuiderFile) {
+                        LOG.log(Level.INFO, "skipping guider file {0}", file);
+                        break;
+                    }
                 }
                 if (i > 0) {
                     if (isDMFile) {
