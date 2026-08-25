@@ -444,8 +444,12 @@ public class CachingReader {
 
     private static BufferedImage createBufferedImage(RawData<FloatBuffer> rawData, boolean usePseudoRGB) {
         FloatBuffer floatBuffer = rawData.getBuffer();
-
+        LOG.log(Level.INFO, "createBufferedImage(RawData<FloatBuffer>, usePseudoRGB={0}", usePseudoRGB);
         EnhancedScalingUtils esu = new EnhancedScalingUtils(floatBuffer, CameraImageReader.DEFAULT_COLOR_MAP);
+        LOG.log(Level.INFO, "  entries={0}", esu.getEntries());
+        LOG.log(Level.INFO, "  bin size={0}", esu.getBinSize());
+        LOG.log(Level.INFO, "  min={0}", esu.getMin());
+        LOG.log(Level.INFO, "  max={0}", esu.getMax());
         Segment segment = rawData.getSegment();
         Rectangle datasec = segment.getDataSec();
 
@@ -467,6 +471,7 @@ public class CachingReader {
 
     private static BufferedImage createBufferedImage(RawData<IntBuffer> rawData, CorrectionFactors factors, long[] globalScale, boolean usePseudoRGB) {
         IntBuffer intBuffer = rawData.getBuffer();
+        LOG.log(Level.INFO, "createBufferedImage(RawData<IntBuffer>, usePseudoRGB={0}", usePseudoRGB);
         Segment segment = rawData.getSegment();
         Rectangle datasec = segment.getDataSec();
         // Apply bias correction
